@@ -1,0 +1,8 @@
+# Normalise line endings in the repository; check out native on each platform.
+* text=auto
+
+# Binary assets -- never touch these.
+*.png    binary
+*.zip    binary
+*.npz    binary
+*.graphml -text

@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truck-Drone Delivery — RL Simulator</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2a3140;
+    --ink:#e6edf3; --dim:#8b949e; --faint:#6e7681;
+    --road:#30363d; --truck:#58a6ff; --drone:#f0883e; --cust:#7ee787;
+    --depot:#d2a8ff; --done:#3fb950; --bad:#f85149; --warn:#d29922;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  h1,h2,h3{margin:0;font-weight:600}
+  .wrap{max-width:1600px;margin:0 auto;padding:18px}
+
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+         padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  header h1{font-size:19px;letter-spacing:-.01em}
+  header .sub{color:var(--dim);font-size:13px}
+  .badge{font-size:11px;padding:2px 8px;border-radius:20px;
+         background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+            background:var(--panel);border:1px solid var(--line);
+            border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  label{font-size:12px;color:var(--dim);display:flex;flex-direction:column;gap:4px}
+  select,button{font:inherit;background:var(--panel2);color:var(--ink);
+                border:1px solid var(--line);border-radius:7px;padding:7px 11px;
+                cursor:pointer}
+  select:hover,button:hover{border-color:#3d4757}
+  button.primary{background:var(--truck);border-color:var(--truck);color:#07121f;
+                 font-weight:600;min-width:92px}
+  button.primary:hover{background:#79b8ff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .spacer{flex:1}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{border:none;border-radius:0;padding:7px 13px;background:var(--panel2)}
+  .seg button.on{background:var(--truck);color:#07121f;font-weight:600}
+
+  .stage{display:grid;grid-template-columns:1fr 330px;gap:16px;align-items:start}
+  @media(max-width:1150px){.stage{grid-template-columns:1fr}}
+
+  .maps{display:grid;gap:12px}
+  .maps.race{grid-template-columns:1fr 1fr}
+  @media(max-width:900px){.maps.race{grid-template-columns:1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        overflow:hidden}
+  .card > h3{padding:10px 14px;font-size:13px;border-bottom:1px solid var(--line);
+             display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .card > h3 .tag{font-size:11px;font-weight:500;color:var(--dim)}
+  /* The region is square, but a square map pushes the controls and the
+     timeline off a laptop screen. Cap the height and let the SVG letterbox
+     so the whole demo stays visible without scrolling. */
+  svg.map{display:block;width:100%;height:auto;max-height:58vh;
+          background:#0a0e14}
+  .maps.race svg.map{max-height:46vh}
+
+  .finish{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600}
+  .finish.go{background:rgba(63,185,80,.16);color:var(--done)}
+  .finish.wait{background:rgba(139,148,158,.14);color:var(--dim)}
+
+  .side{display:grid;gap:12px}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;
+        padding:7px 14px;border-bottom:1px solid rgba(42,49,64,.5);font-size:13px}
+  .stat:last-child{border-bottom:none}
+  .stat .k{color:var(--dim);font-size:12px}
+  .stat .v{font-variant-numeric:tabular-nums;font-weight:600}
+  .v.good{color:var(--done)} .v.bad{color:var(--bad)}
+
+  .bat{padding:9px 14px;border-bottom:1px solid rgba(42,49,64,.5)}
+  .bat .row{display:flex;justify-content:space-between;font-size:12px;
+            color:var(--dim);margin-bottom:5px}
+  .bat .row b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .track{height:6px;background:#0a0e14;border-radius:4px;overflow:hidden}
+  .fill{height:100%;background:var(--done);border-radius:4px;
+        transition:width .12s linear}
+  .fill.low{background:var(--warn)} .fill.crit{background:var(--bad)}
+
+  .log{max-height:250px;overflow-y:auto;padding:6px 0;font-size:12px}
+  .log div{padding:5px 14px;border-bottom:1px solid rgba(42,49,64,.35);
+           display:flex;gap:8px}
+  .log .t{color:var(--faint);font-variant-numeric:tabular-nums;flex:none}
+  .log .m{color:var(--dim)}
+  .log .m b{color:var(--ink);font-weight:600}
+
+  .timeline{margin-top:14px;background:var(--panel);border:1px solid var(--line);
+            border-radius:10px;padding:12px 16px}
+  .timeline .head{display:flex;justify-content:space-between;font-size:12px;
+                  color:var(--dim);margin-bottom:8px;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--truck)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--dim);
+          padding:10px 14px}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;
+            margin-right:5px;vertical-align:middle}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:6px 10px;text-align:right;border-bottom:1px solid rgba(42,49,64,.5)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;
+     letter-spacing:.04em}
+  td{font-variant-numeric:tabular-nums}
+  tr.me td{background:rgba(88,166,255,.07)}
+  td.g{color:var(--done)} td.r{color:var(--bad)}
+
+  .msg{padding:14px;color:var(--dim);font-size:13px}
+  .msg code{background:var(--panel2);padding:2px 6px;border-radius:4px;
+            color:var(--ink);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Truck–Drone Collaborative Delivery</h1>
+  <span class="sub">Deep Reinforcement Learning simulator</span>
+  <span class="spacer"></span>
+  <span class="badge" id="scenarioBadge">loading…</span>
+</header>
+
+<div class="controls">
+  <label>Dispatch policy
+    <select id="policy"></select>
+  </label>
+  <label>Delivery instance
+    <select id="instance"></select>
+  </label>
+  <label>Speed
+    <select id="speed">
+      <option value="30">30× </option>
+      <option value="60" selected>60×</option>
+      <option value="120">120×</option>
+      <option value="300">300×</option>
+    </select>
+  </label>
+  <label>View
+    <span class="seg">
+      <button id="vSingle" class="on">Agent only</button>
+      <button id="vRace">Race vs baseline</button>
+    </span>
+  </label>
+  <span class="spacer"></span>
+  <button class="primary" id="play">▶ Play</button>
+  <button id="reset">Reset</button>
+</div>
+
+<div class="stage">
+  <div>
+    <div class="maps" id="maps">
+      <div class="card">
+        <h3><span id="titleA">RL agent</span>
+            <span class="finish wait" id="finA">running</span></h3>
+        <svg class="map" id="mapA" viewBox="0 0 1000 1000"></svg>
+        <div class="legend">
+          <span><i style="background:var(--depot)"></i>Depot</span>
+          <span><i style="background:var(--cust)"></i>Customer</span>
+          <span><i style="background:var(--done)"></i>Delivered</span>
+          <span><i style="background:var(--truck)"></i>Truck</span>
+          <span><i style="background:var(--drone)"></i>Drone (carries 1 parcel)</span>
+          <span style="color:var(--drone)">— — outbound</span>
+          <span style="color:var(--truck)">· · returning to truck</span>
+        </div>
+      </div>
+      <div class="card" id="cardB" style="display:none">
+        <h3>Truck-only baseline <span class="tag">OR-Tools TSP</span>
+            <span class="finish wait" id="finB">running</span></h3>
+        <svg class="map" id="mapB" viewBox="0 0 1000 1000"></svg>
+        <div class="legend">
+          <span>No drone — the truck drives every stop itself.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="head">
+        <span>Elapsed <b id="clock">0:00</b> of shift</span>
+        <span id="clockEnd">—</span>
+      </div>
+      <input type="range" id="scrub" min="0" max="1000" value="0" step="1">
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h3>Live state <span class="tag" id="liveTag"></span></h3>
+      <div id="live"></div>
+    </div>
+
+    <div class="card">
+      <h3>Final outcome <span class="tag">vs truck-only</span></h3>
+      <div id="outcome"></div>
+    </div>
+
+    <div class="card">
+      <h3>Sortie log</h3>
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="card">
+      <h3>Held-out evaluation <span class="tag" id="evalTag"></span></h3>
+      <div id="evalTable"><div class="msg">Run
+        <code>python -m truckdrone.evaluate</code> to populate.</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const SVG = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+
+let TRACE = null, INFO = null;
+let playing = false, clock = 0, duration = 1, lastFrame = 0, race = false;
+
+// ----------------------------------------------------------------------
+// Track: one animated entity set (truck + drones) over a list of legs
+// ----------------------------------------------------------------------
+class Track {
+  constructor(svgId, legs, nodes, edges, depot, customers, nDrones){
+    this.svg = $(svgId);
+    this.legs = legs;
+    this.nodes = nodes;
+    this.pos = {}; nodes.forEach(n => this.pos[n.id] = [n.x, n.y]);
+    this.depot = depot;
+    this.customers = customers;
+    this.nDrones = nDrones;
+    this.end = legs.length ? legs[legs.length-1].t_end : 1;
+    this.draw(edges);
+  }
+
+  // ---- static scene ----
+  draw(edges){
+    const s = this.svg;
+    s.innerHTML = "";
+
+    const g = t => { const e = document.createElementNS(SVG, t); s.appendChild(e); return e; };
+
+    // Road network.
+    const roads = g("g");
+    edges.forEach(([u,v]) => {
+      const l = document.createElementNS(SVG,"line");
+      l.setAttribute("x1",this.pos[u][0]); l.setAttribute("y1",this.pos[u][1]);
+      l.setAttribute("x2",this.pos[v][0]); l.setAttribute("y2",this.pos[v][1]);
+      l.setAttribute("stroke","var(--road)"); l.setAttribute("stroke-width","2.2");
+      roads.appendChild(l);
+    });
+
+    // Trail the truck leaves behind.
+    this.trail = g("g");
+    this.trail.setAttribute("stroke","var(--truck)");
+    this.trail.setAttribute("stroke-width","3");
+    this.trail.setAttribute("stroke-opacity",".38");
+    this.trail.setAttribute("fill","none");
+
+    // Drone flight lines (straight, road-independent — the whole point).
+    this.air = g("g");
+
+    // Customers.
+    this.custEls = {};
+    const cg = g("g");
+    this.customers.forEach(c => {
+      const el = document.createElementNS(SVG,"circle");
+      el.setAttribute("cx",this.pos[c][0]); el.setAttribute("cy",this.pos[c][1]);
+      el.setAttribute("r","6.5");
+      el.setAttribute("fill","none");
+      el.setAttribute("stroke","var(--cust)");
+      el.setAttribute("stroke-width","2.4");
+      cg.appendChild(el);
+      this.custEls[c] = el;
+    });
+
+    // Depot.
+    const d = document.createElementNS(SVG,"rect");
+    d.setAttribute("x",this.pos[this.depot][0]-8); d.setAttribute("y",this.pos[this.depot][1]-8);
+    d.setAttribute("width","16"); d.setAttribute("height","16"); d.setAttribute("rx","3");
+    d.setAttribute("fill","var(--depot)");
+    g("g").appendChild(d);
+
+    // Drones. Each carries a single visible parcel on the way out, which it
+    // drops at the customer -- a drone flies exactly one package per sortie,
+    // and the parcel disappearing at the doorstep is what makes that legible.
+    this.droneEls = [];
+    this.parcelEls = [];
+    const dg = g("g");
+    for(let i=0;i<this.nDrones;i++){
+      const el = document.createElementNS(SVG,"g");
+      el.setAttribute("opacity","0");
+      const halo = document.createElementNS(SVG,"circle");
+      halo.setAttribute("r","11"); halo.setAttribute("fill","var(--drone)");
+      halo.setAttribute("opacity",".2");
+      const body = document.createElementNS(SVG,"circle");
+      body.setAttribute("r","5.5"); body.setAttribute("fill","var(--drone)");
+      const parcel = document.createElementNS(SVG,"rect");
+      parcel.setAttribute("x","-2.6"); parcel.setAttribute("y","3.4");
+      parcel.setAttribute("width","5.2"); parcel.setAttribute("height","5.2");
+      parcel.setAttribute("rx","1");
+      parcel.setAttribute("fill","var(--cust)");
+      parcel.setAttribute("stroke","#0a0e14");
+      parcel.setAttribute("stroke-width","1");
+      el.appendChild(halo); el.appendChild(body); el.appendChild(parcel);
+      dg.appendChild(el);
+      this.droneEls.push(el);
+      this.parcelEls.push(parcel);
+    }
+
+    // Where an inbound drone will meet the truck. Drawn only while a drone is
+    // on its way back, so the rendezvous never reads as a delivery -- it is
+    // usually another customer's node, which is exactly what made the return
+    // leg look like a second drop.
+    this.meetEls = g("g");
+
+    // Truck.
+    this.truckEl = document.createElementNS(SVG,"g");
+    const halo = document.createElementNS(SVG,"circle");
+    halo.setAttribute("r","14"); halo.setAttribute("fill","var(--truck)");
+    halo.setAttribute("opacity",".18");
+    const body = document.createElementNS(SVG,"rect");
+    body.setAttribute("x","-7"); body.setAttribute("y","-5.5");
+    body.setAttribute("width","14"); body.setAttribute("height","11");
+    body.setAttribute("rx","2.5"); body.setAttribute("fill","var(--truck)");
+    this.truckEl.appendChild(halo); this.truckEl.appendChild(body);
+    g("g").appendChild(this.truckEl);
+  }
+
+  // ---- interpolation helpers ----
+  /* Walk a node path by cumulative arc length and return both the point at
+     fraction f and the polyline up to it. Doing this by arc length rather
+     than by node index keeps the truck at constant speed along the leg even
+     when the road path is made of very uneven hops. */
+  _walk(path, f){
+    const p = path.map(n => this.pos[n]);
+    if(p.length === 1) return {point: p[0], upto: [p[0]]};
+
+    const seg = [], cum = [0];
+    for(let i=1;i<p.length;i++){
+      const d = Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]);
+      seg.push(d); cum.push(cum[i-1]+d);
+    }
+    const total = cum[cum.length-1] || 1;
+    const target = Math.max(0, Math.min(1, f)) * total;
+
+    for(let i=1;i<cum.length;i++){
+      if(target <= cum[i] || i === cum.length-1){
+        const local = seg[i-1] ? (target-cum[i-1])/seg[i-1] : 0;
+        const point = [p[i-1][0] + (p[i][0]-p[i-1][0])*local,
+                       p[i-1][1] + (p[i][1]-p[i-1][1])*local];
+        return {point, upto: p.slice(0, i).concat([point])};
+      }
+    }
+    return {point: p[p.length-1], upto: p};
+  }
+
+  _along(path, f){ return this._walk(path, f).point; }
+
+  /* A sortie is out-leg, hover to drop the parcel, then in-leg to the
+     recovery point. Time is split by distance with a fixed slice reserved
+     for the hover, so the drone visibly pauses over the customer. */
+  _phases(s){
+    const a = this.pos[s.launch], b = this.pos[s.customer], c = this.pos[s.recovery];
+    const dOut = Math.hypot(b[0]-a[0], b[1]-a[1]);
+    const dIn  = Math.hypot(c[0]-b[0], c[1]-b[1]);
+    const HOVER = 0.12;
+    const share = dOut / Math.max(1e-6, dOut + dIn);
+    const tOut = (1 - HOVER) * share;
+    return {a, b, c, tOut, tHover: tOut + HOVER};
+  }
+
+  _sortiePos(s, f){
+    const {a, b, c, tOut, tHover} = this._phases(s);
+    if(f <= tOut){
+      const k = tOut ? f/tOut : 1;
+      return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, "out"];
+    }
+    if(f <= tHover) return [b[0], b[1], "hover"];
+    const k = (f - tHover) / Math.max(1e-6, 1 - tHover);
+    return [b[0]+(c[0]-b[0])*k, b[1]+(c[1]-b[1])*k, "in"];
+  }
+
+  /* Fraction of the sortie's distance flown by time f. Holds flat across the
+     hover, so the drone-kilometre readout does not tick upward while the
+     drone is stationary over the doorstep. */
+  _flownFraction(s, f){
+    const {a, b, c, tOut, tHover} = this._phases(s);
+    const dOut = Math.hypot(b[0]-a[0], b[1]-a[1]);
+    const dIn  = Math.hypot(c[0]-b[0], c[1]-b[1]);
+    const share = dOut / Math.max(1e-6, dOut + dIn);   // outbound share
+    if(f <= tOut) return share * (tOut ? f/tOut : 1);
+    if(f <= tHover) return share;
+    return share + (1 - share) * Math.min(1, (f - tHover) / Math.max(1e-6, 1 - tHover));
+  }
+
+  // ---- render at absolute time t ----
+  render(t){
+    const legs = this.legs;
+    if(!legs.length) return {done:true, served:0, km:0, droneKm:0, wh:0, bat:[]};
+
+    let idx = legs.findIndex(l => t < l.t_end);
+    const finished = idx === -1;
+    if(finished) idx = legs.length - 1;
+    const leg = legs[idx];
+
+    // Truck position.
+    const f = finished ? 1
+      : Math.max(0, Math.min(1, (t - leg.t_start) / Math.max(1e-6, leg.truck_time_s)));
+    const walk = this._walk(leg.truck_path, f);
+    this.truckEl.setAttribute("transform",
+      `translate(${walk.point[0]},${walk.point[1]})`);
+
+    // Road already driven.
+    this.trail.innerHTML = "";
+    for(let i=0;i<=idx;i++){
+      const done = (i < idx || finished);
+      const pts = done ? legs[i].truck_path.map(n => this.pos[n]) : walk.upto;
+      if(pts.length < 2) continue;
+      const path = document.createElementNS(SVG,"path");
+      path.setAttribute("d", "M" + pts.map(p => `${p[0]},${p[1]}`).join("L"));
+      this.trail.appendChild(path);
+    }
+
+    // Drones and their flight lines.
+    this.air.innerHTML = "";
+    this.droneEls.forEach(e => e.setAttribute("opacity","0"));
+    // Per drone: the charge in each pack it carries, plus the live charge of
+    // the pack currently in the air (if any). The two are shown separately so
+    // a spare charging on the truck is never mistaken for the flying pack.
+    //
+    // A leg's recorded packs are its END state. Showing those while the leg is
+    // still running would display charge the spare has not accumulated yet, so
+    // interpolate from the previous leg's end to this one.
+    const legSpan = Math.max(1e-6, leg.t_end - leg.t_start);
+    const legF = finished ? 1 : Math.max(0, Math.min(1, (t - leg.t_start) / legSpan));
+    const prev = idx > 0 ? legs[idx - 1].packs : null;
+    const packs = (leg.packs || []).map((row, i) => row.map((end, p) => {
+      const start = prev ? prev[i][p] : 100;
+      return start + (end - start) * legF;
+    }));
+    const flying = {};
+    if(!finished){
+      leg.sorties.forEach(s => {
+        const sf = Math.max(0, Math.min(1, (t - leg.t_start) / Math.max(1e-6, s.time_s)));
+        const [dx, dy, phase] = this._sortiePos(s, sf);
+        const el = this.droneEls[s.drone] || this.droneEls[0];
+        if(!el) return;   // baseline track carries no drones
+        el.setAttribute("transform", `translate(${dx},${dy})`);
+        el.setAttribute("opacity","1");
+
+        // A drone that reaches the rendezvous before the truck holds there
+        // until it is picked up. It used to be hidden the moment its sortie
+        // clock ran out, which looked exactly like a drone that never came
+        // back. Show it waiting, and mark it so the wait is legible.
+        const waiting = sf >= 1;
+        el.firstChild.setAttribute("r", waiting ? "8" : "11");
+        el.firstChild.setAttribute("opacity", waiting ? ".38" : ".2");
+
+        // The parcel rides out and is dropped during the hover.
+        const parcel = this.parcelEls[s.drone];
+        if(parcel) parcel.setAttribute("opacity", phase === "out" ? "1" : "0");
+
+        if(!waiting){
+          // Outbound and return are drawn differently on purpose. The return
+          // leg ends at the truck's rendezvous, which is usually another
+          // customer's node, so a single uniform line made the sortie look
+          // like two deliveries. Outbound is drone-coloured and carrying;
+          // the return is truck-coloured, because that is what it is flying
+          // to -- the truck, not another doorstep.
+          const outbound = phase === "out";
+          const line = document.createElementNS(SVG,"line");
+          const from = outbound ? this.pos[s.launch] : this.pos[s.customer];
+          line.setAttribute("x1",from[0]); line.setAttribute("y1",from[1]);
+          line.setAttribute("x2",dx); line.setAttribute("y2",dy);
+          line.setAttribute("stroke", outbound ? "var(--drone)" : "var(--truck)");
+          line.setAttribute("stroke-width","1.8");
+          line.setAttribute("stroke-dasharray", outbound ? "5 4" : "2 5");
+          line.setAttribute("stroke-opacity", outbound ? ".8" : ".6");
+          this.air.appendChild(line);
+
+          if(!outbound){
+            const meet = this.pos[s.recovery];
+            const ring = document.createElementNS(SVG,"circle");
+            ring.setAttribute("cx",meet[0]); ring.setAttribute("cy",meet[1]);
+            ring.setAttribute("r","10");
+            ring.setAttribute("fill","none");
+            ring.setAttribute("stroke","var(--truck)");
+            ring.setAttribute("stroke-width","1.4");
+            ring.setAttribute("stroke-dasharray","3 3");
+            ring.setAttribute("opacity",".8");
+            this.air.appendChild(ring);
+          }
+        }
+
+        if(sf < 1){
+          flying[s.drone] = s.battery_before +
+            (s.battery_after - s.battery_before) * sf;
+        }
+      });
+    }
+
+    // Delivered customers, and running totals.
+    const served = new Set();
+    let km = 0, droneKm = 0, wh = 0;
+    for(let i=0;i<=idx;i++){
+      const l = legs[i];
+      const whole = (i < idx || finished);
+      if(whole){
+        km += l.truck_km;
+        if(l.truck_delivery !== null && l.truck_delivery !== undefined)
+          served.add(l.truck_delivery);
+        l.sorties.forEach(s => { served.add(s.customer); droneKm += s.km; wh += s.wh; });
+      } else {
+        km += l.truck_km * f;
+        l.sorties.forEach(s => {
+          const sf = Math.max(0, Math.min(1, (t - l.t_start) / Math.max(1e-6, s.time_s)));
+          // The parcel is dropped during the hover, part-way through the
+          // sortie -- not when the drone finally rejoins the truck. Marking
+          // the customer served only at the end left it looking undelivered
+          // while the drone was visibly hovering over the doorstep.
+          if(sf >= this._phases(s).tOut) served.add(s.customer);
+          const flown = this._flownFraction(s, sf);
+          droneKm += s.km * flown; wh += s.wh * flown;
+        });
+      }
+    }
+    Object.entries(this.custEls).forEach(([c, el]) => {
+      const on = served.has(Number(c));
+      el.setAttribute("fill", on ? "var(--done)" : "none");
+      el.setAttribute("stroke", on ? "var(--done)" : "var(--cust)");
+    });
+
+    return {done: finished, served: served.size, km, droneKm, wh,
+            packs, flying};
+  }
+}
+
+// ----------------------------------------------------------------------
+// UI
+// ----------------------------------------------------------------------
+let trackA = null, trackB = null;
+
+const mmss = s => {
+  const m = Math.floor(s/60), r = Math.floor(s%60);
+  return `${m}:${String(r).padStart(2,"0")}`;
+};
+
+function stat(k, v, cls){
+  return `<div class="stat"><span class="k">${k}</span>
+          <span class="v ${cls||""}">${v}</span></div>`;
+}
+
+function renderLive(a, b){
+  const h = TRACE.hybrid.stats;
+  let html = "";
+  html += stat("Elapsed (delivery clock)", mmss(clock));
+  html += stat("Packages delivered", `${a.served} / ${h.customers}`);
+  html += stat("Truck distance", `${a.km.toFixed(1)} km`);
+  html += stat("Drone distance", `${a.droneKm.toFixed(1)} km`);
+  html += stat("Drone energy used", `${a.wh.toFixed(0)} Wh`);
+  if(race && b) html += stat("Baseline truck distance", `${b.km.toFixed(1)} km`);
+
+  a.packs.forEach((packs, i) => {
+    // The bar tracks whichever pack matters right now: the one in the air if
+    // the drone is out, otherwise the fullest one it could launch on next.
+    const aloft = a.flying[i] !== undefined;
+    const v = aloft ? a.flying[i] : Math.max(...packs);
+    const cls = v < 20 ? "crit" : v < 45 ? "low" : "";
+    const spares = packs.length > 1
+      ? `<span style="color:var(--faint)">packs ${packs.map(
+           x => Math.round(x) + "%").join(" · ")}</span>` : "";
+    html += `<div class="bat"><div class="row">
+             <span>Drone ${i+1}${aloft ? " — in flight" : ""}</span>
+             <b>${v.toFixed(0)}%</b></div>
+             <div class="track"><div class="fill ${cls}"
+             style="width:${Math.max(0,Math.min(100,v))}%"></div></div>
+             <div class="row" style="margin:5px 0 0">${spares}</div></div>`;
+  });
+  $("live").innerHTML = html;
+}
+
+function renderOutcome(){
+  const h = TRACE.hybrid.stats, b = TRACE.baseline.stats, c = TRACE.comparison;
+  const sign = v => (v <= 0 ? "good" : "bad");
+  const fmt  = v => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  let html = "";
+  html += stat("Delivery time", `${h.time_min} min vs ${b.time_min} min`);
+  html += stat("→ change", fmt(c.time_change_pct), sign(c.time_change_pct));
+  html += stat("Truck kilometres", `${h.truck_km} vs ${b.truck_km} km`);
+  html += stat("→ change", fmt(c.truck_km_change_pct), sign(c.truck_km_change_pct));
+  html += stat("Total energy", `${(h.energy_wh/1000).toFixed(1)} vs ${(b.energy_wh/1000).toFixed(1)} kWh`);
+  html += stat("→ change", fmt(c.energy_change_pct), sign(c.energy_change_pct));
+  html += stat("Delivered by drone", `${h.drone_deliveries} of ${h.customers}`);
+  html += stat("Truck idle waiting", `${h.truck_wait_min} min`);
+  html += stat("Route completed",
+               h.route_complete ? "yes — all packages" : `NO — ${h.served}/${h.customers}`,
+               h.route_complete ? "good" : "bad");
+  $("outcome").innerHTML = html;
+}
+
+function renderLog(){
+  const rows = [];
+  TRACE.hybrid.legs.forEach(l => {
+    l.sorties.forEach(s => {
+      rows.push({t: l.t_start, html:
+        `<b>Drone ${s.drone+1}</b> carries <b>1 parcel</b> to customer
+         ${s.customer}, then flies on to meet the truck at ${s.recovery} —
+         ${s.km} km, saved <b>${s.detour_saved_km} km</b> of truck detour
+         (battery ${s.battery_before}% → ${s.battery_after}%${
+           s.swapped ? ", pack swapped" : ""})`});
+    });
+    if(l.truck_delivery !== null && l.truck_delivery !== undefined){
+      rows.push({t: l.t_end, html: `Truck delivered at customer ${l.truck_delivery}`});
+    }
+  });
+  rows.sort((a,b) => a.t - b.t);
+  $("log").innerHTML = rows.length
+    ? rows.map(r => `<div><span class="t">${mmss(r.t)}</span>
+                     <span class="m">${r.html}</span></div>`).join("")
+    : `<div class="msg">This policy never launched a drone.</div>`;
+}
+
+function frame(ts){
+  if(playing){
+    // Browsers throttle requestAnimationFrame in a hidden tab, so returning
+    // to one can hand us a gap of many seconds. Advancing the clock by the
+    // raw delta would teleport the route to its end; cap it so the animation
+    // simply resumes where it paused.
+    // 0.25 s covers frame rates down to 4 fps, so ordinary playback is
+    // untouched, while a tab left hidden for a minute resumes instead of
+    // jumping to the end.
+    const dt = Math.min(lastFrame ? (ts - lastFrame)/1000 : 0, 0.25);
+    clock = Math.min(duration, clock + dt * Number($("speed").value));
+    if(clock >= duration){ playing = false; $("play").textContent = "▶ Play"; }
+  }
+  lastFrame = ts;
+
+  const a = trackA.render(clock);
+  const b = (race && trackB) ? trackB.render(clock) : null;
+
+  $("scrub").value = Math.round(clock / duration * 1000);
+  $("clock").textContent = mmss(clock);
+  renderLive(a, b);
+
+  // Live progress on each map, so a glance says who is ahead.
+  const total = TRACE.hybrid.stats.customers;
+  $("finA").className = "finish " + (a.done ? "go" : "wait");
+  $("finA").textContent = a.done
+    ? `done in ${TRACE.hybrid.stats.time_min} min`
+    : `${a.served}/${total} delivered`;
+  if(race && b){
+    $("finB").className = "finish " + (b.done ? "go" : "wait");
+    $("finB").textContent = b.done
+      ? `done in ${TRACE.baseline.stats.time_min} min`
+      : `${b.served}/${total} delivered`;
+  }
+  requestAnimationFrame(frame);
+}
+
+async function load(){
+  const policy = $("policy").value, instance = $("instance").value;
+  $("play").disabled = true;
+  const r = await fetch(`/api/rollout?policy=${policy}&instance=${instance}`);
+  if(!r.ok){
+    const e = await r.json();
+    $("live").innerHTML = `<div class="msg">${e.error}</div>`;
+    return;
+  }
+  TRACE = await r.json();
+  $("play").disabled = false;
+
+  const nD = Math.max(1, ...TRACE.hybrid.legs.flatMap(
+    l => l.packs ? [l.packs.length] : [1]));
+  trackA = new Track("mapA", TRACE.hybrid.legs, TRACE.nodes, TRACE.edges,
+                     TRACE.depot, TRACE.customers, nD);
+  trackB = new Track("mapB", TRACE.baseline.legs, TRACE.nodes, TRACE.edges,
+                     TRACE.depot, TRACE.customers, 0);
+
+  duration = Math.max(trackA.end, trackB.end, 1);
+  clock = 0; playing = false; $("play").textContent = "▶ Play";
+  $("titleA").textContent = policy.replace(/_/g," ");
+  $("clockEnd").textContent = `route ends ${mmss(duration)}`;
+  $("liveTag").textContent = `${nD} drone${nD>1?"s":""}`;
+  renderOutcome(); renderLog();
+}
+
+async function loadEval(){
+  const r = await fetch("/api/results");
+  if(!r.ok) return;
+  const d = await r.json();
+  $("evalTag").textContent = `${d.n_eval_instances} instances`;
+  const rows = d.summaries.map(s => {
+    const cur = s.policy === $("policy").value ? ' class="me"' : "";
+    const f = v => v === null ? "—"
+      : `<td class="${v<=0?"g":"r"}">${v>0?"+":""}${v.toFixed(1)}%</td>`;
+    return `<tr${cur}><td>${s.policy.replace(/_/g," ")}</td>
+            <td>${s.completion_rate_pct.toFixed(0)}%</td>
+            ${f(s.time_change_pct)}${f(s.truck_km_change_pct)}</tr>`;
+  }).join("");
+  $("evalTable").innerHTML =
+    `<table><thead><tr><th>policy</th><th>complete</th><th>time</th>
+     <th>truck km</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function init(){
+  INFO = await (await fetch("/api/info")).json();
+  $("scenarioBadge").textContent =
+    `${INFO.region} · ${INFO.n_nodes} nodes / ${INFO.n_edges} roads · ` +
+    `${INFO.n_customers} customers`;
+
+  const opts = [...INFO.trained, ...INFO.heuristics];
+  $("policy").innerHTML = opts.map(p =>
+    `<option value="${p}">${p.replace(/_/g," ")}${
+      INFO.trained.includes(p) ? " (learned)" : ""}</option>`).join("");
+  $("instance").innerHTML = Array.from({length: INFO.n_instances},
+    (_, i) => `<option value="${i}">#${i+1}</option>`).join("");
+
+  await load(); await loadEval();
+  requestAnimationFrame(frame);
+}
+
+$("play").onclick = () => {
+  if(clock >= duration) clock = 0;
+  playing = !playing;
+  $("play").textContent = playing ? "❚❚ Pause" : "▶ Play";
+};
+$("reset").onclick = () => { clock = 0; playing = false; $("play").textContent = "▶ Play"; };
+$("scrub").oninput = e => { clock = e.target.value/1000 * duration; };
+$("policy").onchange = async () => { await load(); loadEval(); };
+$("instance").onchange = load;
+$("vSingle").onclick = () => {
+  race = false; $("vSingle").classList.add("on"); $("vRace").classList.remove("on");
+  $("maps").classList.remove("race"); $("cardB").style.display = "none";
+};
+$("vRace").onclick = () => {
+  race = true; $("vRace").classList.add("on"); $("vSingle").classList.remove("on");
+  $("maps").classList.add("race"); $("cardB").style.display = "block";
+};
+
+init();
+</script>
+</body>
+</html>

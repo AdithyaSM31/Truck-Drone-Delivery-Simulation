@@ -1,0 +1,26 @@
+{
+  "maskable_ppo": {
+    "algo": "maskable_ppo",
+    "timesteps": 300000,
+    "train_minutes": 8.42918175666661,
+    "n_drones": 2,
+    "final_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\maskable_ppo\\final.zip",
+    "best_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\maskable_ppo\\best\\best_model.zip"
+  },
+  "ppo": {
+    "algo": "ppo",
+    "timesteps": 300000,
+    "train_minutes": 6.552465519999775,
+    "n_drones": 2,
+    "final_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\ppo\\final.zip",
+    "best_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\ppo\\best\\best_model.zip"
+  },
+  "dqn": {
+    "algo": "dqn",
+    "timesteps": 300000,
+    "train_minutes": 6.740879588333337,
+    "n_drones": 2,
+    "final_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\dqn\\final.zip",
+    "best_model": "C:\\Users\\adith\\Downloads\\Reinforcement Learning\\Project RL\\truck_drone_rl\\models\\dqn\\best\\best_model.zip"
+  }
+}

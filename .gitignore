@@ -1,0 +1,23 @@
+# Virtual environment (1.2 GB) -- rebuild with: pip install -r requirements.txt
+.venv/
+
+# Python bytecode and test caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Run logs
+*.log
+
+# --- Trained agents -------------------------------------------------------
+# The model weights themselves ARE committed, so the dashboard works straight
+# after a clone without waiting 20 minutes to retrain. What is excluded is the
+# bulky, regenerable training telemetry:
+#
+#   tb/                    TensorBoard event files
+#   episode_metrics.json   ~4 MB per algorithm of per-episode records, used
+#                          only to redraw fig3; the figure itself is committed
+#
+# Everything needed to run and to reproduce the results table is kept.
+models/*/tb/
+models/*/episode_metrics.json
