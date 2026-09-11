@@ -21,3 +21,7 @@ __pycache__/
 # Everything needed to run and to reproduce the results table is kept.
 models/*/tb/
 models/*/episode_metrics.json
+
+# Vercel project link and local env (site/.vercel is machine-specific)
+site/.vercel/
+site/.env.local

@@ -42,7 +42,12 @@ DEFAULT_OUT = os.path.join(ROOT, "site")
 # Injected into the copied dashboard. The page checks for this flag and reads
 # from data/ instead of /api/, so one HTML file serves both the Flask dev
 # server and the frozen site -- no second copy to keep in sync.
-STATIC_FLAG = "<script>window.__STATIC__ = true;</script>\n"
+#
+# It goes inside <head>, not above the file. Anything before <!doctype html> --
+# even a script tag -- puts the browser into quirks mode, which silently
+# changes box sizing and layout out from under the CSS.
+STATIC_FLAG = "<script>window.__STATIC__ = true;</script>"
+HEAD_MARKER = '<meta charset="utf-8">'
 
 VERCEL_CONFIG = {
     "cleanUrls": True,
@@ -86,8 +91,22 @@ def export(out_dir=DEFAULT_OUT, policies=None, model_dir=MODEL_DIR):
     if not names:
         raise RuntimeError("No policies to export -- train an agent first.")
 
+    # Clear the contents rather than the directory itself. Windows refuses to
+    # remove a directory that is any process's working directory -- a local
+    # preview server or a shell sitting in site/ is enough -- and deleting the
+    # root is not what we need anyway. Emptying it drops stale traces from a
+    # previous export just the same.
+    #
+    # Dot-entries are left alone. `.vercel/project.json` is the link between
+    # this directory and the deployed project; deleting it makes the next
+    # `vercel deploy` silently create a second project named after the folder
+    # instead of updating the real one.
     if os.path.isdir(out_dir):
-        shutil.rmtree(out_dir)
+        for entry in os.listdir(out_dir):
+            if entry.startswith("."):
+                continue
+            target = os.path.join(out_dir, entry)
+            shutil.rmtree(target) if os.path.isdir(target) else os.remove(target)
     os.makedirs(os.path.join(out_dir, "data", "traces"), exist_ok=True)
 
     total = 0
@@ -128,11 +147,17 @@ def export(out_dir=DEFAULT_OUT, policies=None, model_dir=MODEL_DIR):
             done += 1
         print("  {:<16} {} instances".format(policy, len(eval_ids)))
 
-    # One dashboard, two modes: copy it verbatim and prepend the static flag.
+    # One dashboard, two modes: copy it verbatim, with the static flag placed
+    # inside <head> so the document still starts with its doctype.
     with open(DASHBOARD, encoding="utf-8") as f:
         html = f.read()
+    if HEAD_MARKER not in html:
+        raise RuntimeError(
+            "Cannot find {!r} in the dashboard -- the static flag has nowhere "
+            "safe to go.".format(HEAD_MARKER))
+    html = html.replace(HEAD_MARKER, HEAD_MARKER + "\n" + STATIC_FLAG, 1)
     with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
-        f.write(STATIC_FLAG + html)
+        f.write(html)
 
     _write_json(os.path.join(out_dir, "vercel.json"), VERCEL_CONFIG)
 
