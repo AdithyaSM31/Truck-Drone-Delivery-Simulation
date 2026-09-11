@@ -1,0 +1,1 @@
+{"heuristics":["truck_only","random","always_nearest","greedy"],"trained":["maskable_ppo","ppo","dqn"],"n_instances":20,"n_customers":15,"n_nodes":50,"n_edges":87,"region":"Whitefield, Bengaluru","area_km":10.0}

@@ -347,6 +347,7 @@ python -m truckdrone.evaluate --which final            # the failure-mode table
 python -m truckdrone.ablation                          # fleet size + spare battery
 python -m truckdrone.report                            # figures
 python dashboard/server.py                             # dashboard only
+python -m truckdrone.export_static                     # freeze to static site/
 tensorboard --logdir models                            # training curves
 ```
 
@@ -367,6 +368,40 @@ tensorboard --logdir models                            # training curves
 
 Any policy can be selected, learned or hand-written, on any of the 20 held-out
 instances.
+
+## Deploying the dashboard
+
+The live dashboard runs policies on demand, which means shipping PyTorch — 544 MB
+of it, before OR-Tools and SciPy. That is more than twice Vercel's 250 MB
+serverless budget, and on a container host it buys a cold start long enough to
+ruin a demo.
+
+None of it is necessary. Every rollout the dashboard can display is
+**deterministic**: learned policies are evaluated with `deterministic=True`, the
+heuristics have no randomness, and `RandomPolicy` is seeded. So the set of things
+a visitor can ask for is finite and known in advance — 7 policies × 20 held-out
+instances — and each trace is about 9 KB of JSON.
+
+```bash
+python -m truckdrone.export_static      # 140 traces, ~9 s, 1.2 MB total
+```
+
+That writes `site/`: a self-contained static build with no Python at all. It
+loads instantly, costs nothing to host, and cannot fall over mid-presentation.
+
+`dashboard/static/index.html` serves **both** modes from one file — the exporter
+prepends `window.__STATIC__`, which swaps the `/api/...` calls for files under
+`data/`. There is no second copy of the dashboard to keep in sync, and because
+the rollouts are deterministic a precomputed trace is byte-identical to what the
+server would have returned.
+
+| | live Flask | static build |
+|---|---|---|
+| dependencies | ~800 MB | none |
+| cold start | seconds (torch import + MDS) | none |
+| new policy on demand | yes | no — the 140 precomputed combinations are all the UI exposes |
+
+Re-run the exporter after retraining, or the site will serve the old agents.
 
 ## Methodology notes
 
