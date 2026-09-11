@@ -267,6 +267,93 @@ def fig_ablation(path, out, xlabel, title, xticks_int=True):
 
 
 # ======================================================================
+# Figure 6 -- what a solved instance looks like
+# ======================================================================
+
+def fig_route_map(out, policy="maskable_ppo", instance=0):
+    """
+    One delivery instance, solved two ways, side by side.
+
+    The tables say the hybrid system drives less; this says *why*. On the left
+    the truck alone must reach all fifteen doors. On the right the drones take
+    the customers that sat furthest off the truck's path, and the truck's route
+    visibly contracts. Drone legs are drawn straight because they are: a drone
+    is not bound to the road graph, and that freedom is the entire mechanism.
+    """
+    from .rollout import make_rollout, view_coords
+    from .scenario import build_graph, load_scenario
+
+    scenario = load_scenario()
+    graph = build_graph(scenario["coords"])
+    try:
+        trace = make_rollout(scenario, graph, policy, instance=instance)
+    except FileNotFoundError:
+        return None
+
+    xy = view_coords(np.asarray(scenario["coords"], dtype=np.float64))
+    pos = {n["id"]: (n["x"], n["y"]) for n in trace["nodes"]}
+    customers, depot = set(trace["customers"]), trace["depot"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 5.6))
+    panels = [("baseline", "Truck only (OR-Tools TSP)"),
+              (            "hybrid", "{} + 2 drones".format(policy.replace("_", " ")))]
+
+    for ax, (key, title) in zip(axes, panels):
+        for u, v in trace["edges"]:                       # road network
+            ax.plot(*zip(pos[u], pos[v]), color="#d8dee4", lw=1.0, zorder=1)
+
+        for leg in trace[key]["legs"]:                    # driven route
+            pts = [pos[n] for n in leg["truck_path"]]
+            ax.plot(*zip(*pts), color="#2f6fed", lw=2.6, zorder=3,
+                    solid_capstyle="round")
+            for s in leg["sorties"]:                      # straight-line sorties
+                ax.plot(*zip(pos[s["launch"]], pos[s["customer"]]),
+                        color="#db6d28", lw=1.9, ls=(0, (5, 3)), zorder=4)
+                ax.plot(*zip(pos[s["customer"]], pos[s["recovery"]]),
+                        color="#db6d28", lw=1.4, ls=(0, (1, 3)), alpha=.75,
+                        zorder=4)
+                ax.plot(*pos[s["customer"]], "o", ms=8, mfc="#db6d28",
+                        mec="white", mew=1.4, zorder=6)
+
+        served_by_truck = {l["truck_delivery"] for l in trace[key]["legs"]}
+        for c in customers:
+            if c in served_by_truck:
+                ax.plot(*pos[c], "o", ms=7, mfc="#2f6fed", mec="white",
+                        mew=1.3, zorder=5)
+        ax.plot(*pos[depot], "s", ms=12, mfc="#8957e5", mec="white", mew=1.6,
+                zorder=7)
+
+        st = trace[key]["stats"]
+        ax.set_title("{}\n{:.0f} min  ·  {:.0f} km driven  ·  {} by drone"
+                     .format(title, st["time_min"], st["truck_km"],
+                             st["drone_deliveries"]),
+                     fontsize=10.5, fontweight="bold", pad=10)
+        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+        ax.set_aspect("equal")
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    handles = [
+        plt.Line2D([], [], color="#2f6fed", lw=2.6, label="truck (road network)"),
+        plt.Line2D([], [], color="#db6d28", lw=1.9, ls=(0, (5, 3)),
+                   label="drone out (straight line)"),
+        plt.Line2D([], [], color="#db6d28", lw=1.4, ls=(0, (1, 3)),
+                   label="drone back to truck"),
+        plt.Line2D([], [], color="#8957e5", marker="s", ls="", ms=9,
+                   label="depot"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False,
+               fontsize=9, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle("One delivery instance, solved two ways "
+                 "(Whitefield, Bengaluru — 15 customers)",
+                 fontsize=12, fontweight="bold", y=0.98)
+    fig.tight_layout(rect=[0, 0.05, 1, 0.95])
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+# ======================================================================
 # Markdown results table
 # ======================================================================
 
@@ -359,6 +446,9 @@ def main():
         os.path.join(FIG_DIR, "fig5_battery_ablation.png"),
         "battery packs per drone (1 = no spare)",
         "What a hot-swappable spare battery buys"))
+
+    made.append(fig_route_map(
+        os.path.join(FIG_DIR, "fig6_route_map.png")))
 
     for path in [m for m in made if m]:
         print("  wrote {}".format(os.path.relpath(path, ROOT)))
