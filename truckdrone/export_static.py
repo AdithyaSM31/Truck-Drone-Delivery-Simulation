@@ -49,26 +49,6 @@ DEFAULT_OUT = os.path.join(ROOT, "site")
 STATIC_FLAG = "<script>window.__STATIC__ = true;</script>"
 HEAD_MARKER = '<meta charset="utf-8">'
 
-VERCEL_CONFIG = {
-    "cleanUrls": True,
-    "headers": [
-        {
-            # Traces are content-addressed by policy and instance and only
-            # change when the agents are retrained, so let the browser keep
-            # them. The page itself must not be cached, or a redeploy would
-            # leave visitors on the old dashboard.
-            "source": "/data/(.*)",
-            "headers": [{"key": "Cache-Control",
-                         "value": "public, max-age=604800, immutable"}],
-        },
-        {
-            "source": "/index.html",
-            "headers": [{"key": "Cache-Control", "value": "no-cache"}],
-        },
-    ],
-}
-
-
 def _trained_policies(model_dir):
     return [a for a in ALGOS
             if os.path.exists(os.path.join(model_dir, a, "best", "best_model.zip"))
@@ -159,13 +139,13 @@ def export(out_dir=DEFAULT_OUT, policies=None, model_dir=MODEL_DIR):
     with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
 
-    _write_json(os.path.join(out_dir, "vercel.json"), VERCEL_CONFIG)
-
     elapsed = time.perf_counter() - t0
     print("\n{} traces in {:.0f}s".format(done, elapsed))
     print("Site: {}".format(out_dir))
     print("Total payload: {:.2f} MB across {} files".format(
         total / 1048576, done + 2))
+    print("Deploy config lives in the repo-root vercel.json "
+          "(outputDirectory: site).")
     return out_dir
 
 

@@ -25,3 +25,6 @@ models/*/episode_metrics.json
 # Vercel project link and local env (site/.vercel is machine-specific)
 site/.vercel/
 site/.env.local
+
+.vercel
+.env*

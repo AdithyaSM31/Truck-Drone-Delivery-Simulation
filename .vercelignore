@@ -1,0 +1,21 @@
+# Only site/ is deployed: it is a self-contained static build. Everything
+# listed here is the research code that produced it -- trained agents, the
+# OpenStreetMap network, figures, the virtualenv -- none of which the static
+# dashboard reads at runtime.
+#
+# Every pattern is anchored with a leading slash. A bare "data" would also
+# match site/data, which is the site's entire payload.
+/.venv
+/.git
+/models
+/data
+/results
+/tests
+/truckdrone
+/dashboard
+/__pycache__
+/*.pptx
+/*.log
+/*.md
+/requirements.txt
+/run_demo.py
