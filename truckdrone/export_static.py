@@ -7,18 +7,20 @@ The live dashboard runs policies on demand, which means shipping PyTorch --
 enough to ruin a demo.
 
 None of it is necessary. Every rollout the dashboard can display is
-deterministic: the learned policies are evaluated with ``deterministic=True``,
-the heuristics have no randomness, and ``RandomPolicy`` is seeded. So the set
-of things a visitor can ask for is finite and known in advance -- every policy
-crossed with every held-out instance -- and each one is about 9 KB of JSON.
+deterministic: the world is fixed by its seed, learned policies act with
+``deterministic=True``, and the heuristics are seeded. So the set of things a
+visitor can ask for is finite and known in advance (see ``catalog.py``), and
+this script renders all of them once, next to a copy of the dashboard that
+reads files instead of calling an API.
 
-This script renders all of them once, next to a copy of the dashboard that
-reads files instead of calling an API. The result is a few hundred kilobytes
-of static assets that load instantly, cost nothing to host, and cannot fall
-over during a presentation.
+    data/info.json                         what can be selected
+    data/results.json                      evaluation, analysis, ablations
+    data/map-<city>.json                   streets and sites, once per city
+    data/traces/<city>/<policy>-<pref>-<instance>-<world>.json
+    data/baseline/<city>/<instance>-<world>.json
+    maps/<city>-<instance>.html            Folium maps on real streets
 
     python -m truckdrone.export_static
-    python -m truckdrone.export_static --out site --policies maskable_ppo greedy
 """
 
 import argparse
@@ -27,15 +29,13 @@ import os
 import shutil
 import time
 
-from . import config
+from . import catalog, config
 from .baselines import POLICIES
-from .rollout import make_rollout
-from .scenario import build_graph, load_scenario, split_instances
-from .train import ALGOS
+from .realmap import build_map
+from .rollout import baseline_trace, build_trace, map_payload
+from .scenario import load_scenario
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(ROOT, "models")
-RESULT_DIR = os.path.join(ROOT, "results")
 DASHBOARD = os.path.join(ROOT, "dashboard", "static", "index.html")
 DEFAULT_OUT = os.path.join(ROOT, "site")
 
@@ -49,11 +49,6 @@ DEFAULT_OUT = os.path.join(ROOT, "site")
 STATIC_FLAG = "<script>window.__STATIC__ = true;</script>"
 HEAD_MARKER = '<meta charset="utf-8">'
 
-def _trained_policies(model_dir):
-    return [a for a in ALGOS
-            if os.path.exists(os.path.join(model_dir, a, "best", "best_model.zip"))
-            or os.path.exists(os.path.join(model_dir, a, "final.zip"))]
-
 
 def _write_json(path, payload):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -62,100 +57,107 @@ def _write_json(path, payload):
     return os.path.getsize(path)
 
 
-def export(out_dir=DEFAULT_OUT, policies=None, model_dir=MODEL_DIR):
-    scenario = load_scenario()
-    graph = build_graph(scenario["coords"])
-    _, eval_ids = split_instances(scenario)
-
-    names = policies or (_trained_policies(model_dir) + list(POLICIES))
-    if not names:
-        raise RuntimeError("No policies to export -- train an agent first.")
-
+def _clear(out_dir):
     # Clear the contents rather than the directory itself. Windows refuses to
     # remove a directory that is any process's working directory -- a local
-    # preview server or a shell sitting in site/ is enough -- and deleting the
-    # root is not what we need anyway. Emptying it drops stale traces from a
-    # previous export just the same.
+    # preview server or a shell sitting in site/ is enough.
     #
     # Dot-entries are left alone. `.vercel/project.json` is the link between
     # this directory and the deployed project; deleting it makes the next
-    # `vercel deploy` silently create a second project named after the folder
-    # instead of updating the real one.
+    # `vercel deploy` silently create a second project.
     if os.path.isdir(out_dir):
         for entry in os.listdir(out_dir):
             if entry.startswith("."):
                 continue
             target = os.path.join(out_dir, entry)
             shutil.rmtree(target) if os.path.isdir(target) else os.remove(target)
-    os.makedirs(os.path.join(out_dir, "data", "traces"), exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
-    total = 0
-    total += _write_json(os.path.join(out_dir, "data", "info.json"), {
-        "heuristics": list(POLICIES),
-        "trained": _trained_policies(model_dir),
-        "n_instances": len(eval_ids),
-        "n_customers": len(scenario["instances"][0]["customers"]),
-        "n_nodes": scenario["n_nodes"],
-        "n_edges": scenario["n_edges"],
-        "region": "Whitefield, Bengaluru",
-        "area_km": scenario["area_km"],
-    })
 
-    # The evaluation table, if it has been generated. Optional: the dashboard
-    # simply omits the panel when it is missing.
-    eval_path = os.path.join(RESULT_DIR, "evaluation.json")
-    if os.path.exists(eval_path):
-        with open(eval_path) as f:
-            ev = json.load(f)
-        total += _write_json(os.path.join(out_dir, "data", "results.json"), {
-            "n_eval_instances": ev["n_eval_instances"],
-            "n_customers": ev["n_customers"],
-            "summaries": ev["summaries"],
-        })
+def export(out_dir=DEFAULT_OUT):
+    from .train import load_policy
 
-    print("Rendering {} policies x {} instances ...".format(
-        len(names), len(eval_ids)))
+    info = catalog.info(static=True)
+    models = catalog.learned_models()
+    loaded = {a: load_policy(a, path) for a, (_, path) in models.items()}
+    _clear(out_dir)
+    data = os.path.join(out_dir, "data")
+    total, files = 0, 0
     t0 = time.perf_counter()
-    done = 0
-    for policy in names:
-        for instance in range(len(eval_ids)):
-            trace = make_rollout(scenario, graph, policy, instance=instance,
-                                 model_dir=model_dir)
-            total += _write_json(
-                os.path.join(out_dir, "data", "traces",
-                             "{}-{}.json".format(policy, instance)), trace)
-            done += 1
-        print("  {:<16} {} instances".format(policy, len(eval_ids)))
 
-    # One dashboard, two modes: copy it verbatim, with the static flag placed
-    # inside <head> so the document still starts with its doctype.
+    total += _write_json(os.path.join(data, "info.json"), info)
+    files += 1
+    res = catalog.results_payload()
+    if res is not None:
+        total += _write_json(os.path.join(data, "results.json"), res)
+        files += 1
+
+    for city, spec in info["cities"].items():
+        sc = load_scenario(city)
+        total += _write_json(os.path.join(data, "map-{}.json".format(city)), map_payload(city))
+        files += 1
+        n = 0
+        for i in range(spec["n_instances"]):
+            for w in spec["worlds"]:
+                total += _write_json(
+                    os.path.join(data, "baseline", city, "{}-{}.json".format(i, w)),
+                    baseline_trace(sc, i, w))
+                files += 1
+                for p in spec["policies"]:
+                    if p in POLICIES:
+                        pol, is_sb3, masked, prefs = POLICIES[p](), False, False, ["na"]
+                    else:
+                        pol, is_sb3, masked = loaded[p], True, p == "maskable_ppo"
+                        prefs = spec["preferences"][p]
+                    for pref in prefs:
+                        trace = build_trace(
+                            sc, i, w, pol, p,
+                            config.HEADLINE_PREFERENCE if pref == "na" else pref,
+                            is_sb3=is_sb3, masked=masked, include_baseline=False)
+                        total += _write_json(os.path.join(
+                            data, "traces", city, "{}-{}-{}-{}.json".format(p, pref, i, w)),
+                            trace)
+                        files += 1
+                        n += 1
+        print("  {:<10} {} traces".format(city, n), flush=True)
+
+        # Real-street maps of the headline agent (or the best heuristic if
+        # nothing is trained yet).
+        lead = "maskable_ppo" if "maskable_ppo" in loaded else "greedy"
+        for i in spec["real_maps"]:
+            w = spec["worlds"][0]
+            if lead in loaded:
+                trace = build_trace(sc, i, w, loaded[lead], lead, config.HEADLINE_PREFERENCE,
+                                    is_sb3=True, masked=True)
+            else:
+                trace = build_trace(sc, i, w, POLICIES[lead](), lead,
+                                    config.HEADLINE_PREFERENCE)
+            path = build_map(sc, trace, os.path.join(out_dir, "maps",
+                                                     "{}-{}.html".format(city, i)))
+            total += os.path.getsize(path)
+            files += 1
+
     with open(DASHBOARD, encoding="utf-8") as f:
         html = f.read()
     if HEAD_MARKER not in html:
-        raise RuntimeError(
-            "Cannot find {!r} in the dashboard -- the static flag has nowhere "
-            "safe to go.".format(HEAD_MARKER))
+        raise RuntimeError("Cannot find {!r} in the dashboard -- the static flag has "
+                           "nowhere safe to go.".format(HEAD_MARKER))
     html = html.replace(HEAD_MARKER, HEAD_MARKER + "\n" + STATIC_FLAG, 1)
     with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
 
-    elapsed = time.perf_counter() - t0
-    print("\n{} traces in {:.0f}s".format(done, elapsed))
-    print("Site: {}".format(out_dir))
-    print("Total payload: {:.2f} MB across {} files".format(
-        total / 1048576, done + 2))
-    print("Deploy config lives in the repo-root vercel.json "
-          "(outputDirectory: site).")
+    print("\n{} files, {:.1f} MB, in {:.0f}s -> {}".format(
+        files + 1, total / 1048576, time.perf_counter() - t0, out_dir))
+    print("Learned agents shown: " + (", ".join(
+        "{} (seed {})".format(a, s) for a, (s, _) in models.items()) or "none"))
     return out_dir
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=DEFAULT_OUT)
-    ap.add_argument("--policies", nargs="*", default=None,
-                    help="defaults to every trained agent plus every heuristic")
     args = ap.parse_args()
-    export(out_dir=args.out, policies=args.policies)
+    export(out_dir=args.out)
 
 
 if __name__ == "__main__":

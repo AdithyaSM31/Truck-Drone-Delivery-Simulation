@@ -21,7 +21,7 @@ here:
 ``GreedyPolicy``
     A cost-benefit dispatcher written by hand: launch when the road detour
     saved outweighs the truck idling created. No lookahead past the current
-    leg, and that limitation costs it more than it looks.
+    decision, and that limitation costs it more than it looks.
 
 All four expose the same ``predict(obs, env)`` signature as a trained
 Stable-Baselines3 model, so ``evaluate.py`` scores every policy through one
@@ -80,87 +80,48 @@ class AlwaysNearestPolicy(BasePolicy):
     name = "always_nearest"
 
     def predict(self, obs, env, deterministic=True):
+        # Actions are ordered slot-major, earliest rendezvous first, so the
+        # lowest legal index is the nearest customer met at the soonest stop.
         legal = np.flatnonzero(env.action_masks()[1:])
         return int(legal[0]) + 1 if len(legal) else 0
 
 
 class GreedyPolicy(BasePolicy):
     """
-    Launch to the feasible customer with the best detour-saved-per-minute-waited
-    trade-off, otherwise drive on.
+    Launch the sortie with the best saved-minus-waited trade-off, otherwise
+    drive on.
 
-    For each legal sortie the policy computes two quantities:
+    For every legal (customer, rendezvous) pair it weighs:
 
-      saved   the road detour the truck avoids by not visiting that customer
-              itself, expressed as driving time
-      wait    how long the truck would sit idle at the recovery point waiting
-              for the drone to catch up
+      saved   the road detour the truck avoids by not visiting that customer,
+              as driving time at the current congestion, plus the doorstep
+              service time the truck no longer spends there
+      wait    how long the truck is expected to idle at the meeting point
+              before the drone arrives
 
-    It launches the candidate maximising ``saved - wait``, and only if that
-    value is positive. That single rule captures the core economics of the
-    problem: a sortie is worth flying exactly when the driving it removes
-    exceeds the waiting it creates.
+    and launches the pair maximising ``saved - wait`` if that is positive. It
+    reads the same wind- and traffic-aware estimates the agent observes, so it
+    is a competent opponent rather than a strawman.
 
-    What it cannot do is look past the current leg. The detour it credits to a
-    customer assumes that customer sits between the truck's current stop and
-    its next one. When the drone is sent somewhere further down the tour, the
-    truck's saving is only realised later and by a different amount, so the
-    rule systematically over-values distant customers -- which is why it flies
-    longer sorties, idles the truck, and loses to ``AlwaysNearestPolicy`` on
-    delivery time despite removing more kilometres. Fixing that requires
-    reasoning about the whole remaining tour, which is what the RL agent gets
-    to learn.
+    What it cannot do is look past the current decision: it will spend a
+    drone on a merely good sortie now and have none free for a much better
+    one two stops later, and it judges each rendezvous in isolation rather
+    than against the rest of the tour.
     """
 
     name = "greedy"
 
     def predict(self, obs, env, deterministic=True):
-        mask = env.action_masks()
-        candidates = np.flatnonzero(mask[1:])
-        if len(candidates) == 0:
-            return 0
-
-        truck_node = env.truck_route[min(env.truck_stop_idx,
-                                         len(env.truck_route) - 1)]
-        nearest = env._get_nearest_unserved(truck_node)
-
-        # The dispatcher sends the drone with the fullest pack, swapping to it
-        # if need be, so cost the sortie against that pack.
-        busy = {d["drone_idx"] for d in env.current_dispatches}
-        free = [i for i in range(env.n_drones) if i not in busy]
-        soc = max((max(env.drone_packs[i]) for i in free), default=0.0)
-
+        speed = env.free_flow_ms if env.stochastic else env.static_truck_ms
+        speed /= env._congestion(env.total_time_s)
         best_action, best_value = 0, 0.0
-        for slot in candidates:
-            if slot >= len(nearest):
+        for (slot, r), entry in env._plans().items():
+            if entry["plan"] is None:
                 continue
-            cust_local_idx = nearest[slot]
-            cust_node = env.customer_indices[cust_local_idx]
-
-            recovery_idx = env._next_required_stop(
-                env.truck_stop_idx, extra_skip=(cust_local_idx,))
-            recovery_node = env.truck_route[recovery_idx]
-
-            # Driving time the truck avoids by skipping this customer.
-            detour_m = max(0.0, float(
-                env.road_matrix[truck_node, cust_node]
-                + env.road_matrix[cust_node, recovery_node]
-                - env.road_matrix[truck_node, recovery_node]))
-            saved_s = env.drone.truck_travel_time_s(detour_m)
-
-            # Idle time the truck would spend waiting at the recovery point.
-            dist_out = float(env.air_matrix[truck_node, cust_node])
-            dist_back = float(env.air_matrix[cust_node, recovery_node])
-            profile = env.drone.sortie_profile(
-                dist_out, dist_back, payload_kg=env.payload_kg, soc_pct=soc)
-            leg_m = float(env.road_matrix[truck_node, recovery_node])
-            wait_s = max(0.0, profile["time_s"]
-                         - env.drone.truck_travel_time_s(leg_m))
-
-            value = saved_s - wait_s
+            saved = entry["detour_m"] / speed + env.service_s
+            value = saved - max(0.0, entry["margin_s"])
             if value > best_value:
-                best_value, best_action = value, int(slot) + 1
-
+                best_value, best_action = value, 1 + slot * env.R + r
         return best_action
 
 

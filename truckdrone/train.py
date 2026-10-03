@@ -1,43 +1,47 @@
 """
-Training entry point.
+Training.
 
-Three algorithms are supported, and the comparison between them is one of the
-project's actual findings rather than boilerplate:
+Three algorithms, compared on an identical environment so that any difference
+is the learner's and not the task's:
 
-``maskable_ppo``
-    PPO with invalid-action masking (sb3-contrib). The environment reports
-    which sorties are physically legal and the policy's logits for illegal
-    actions are driven to -inf before sampling. The agent therefore never
-    wastes a single interaction on an infeasible dispatch.
+``maskable_ppo``  PPO with invalid-action masking (sb3-contrib). Illegal
+                  sorties are removed from the policy's distribution before
+                  sampling, so no interaction is wasted on an infeasible launch.
+``ppo``           Standard PPO, same network and hyperparameters, no mask: it
+                  must learn feasibility from penalties.
+``dqn``           Value-based control on the same discrete action space.
 
-``ppo``
-    Standard PPO. Identical network and hyperparameters, but it must discover
-    the feasibility rules from penalty signal alone.
+Every agent is preference-conditioned: each episode draws a time/energy/cost
+weighting, shows it to the agent, and scalarises the reward with it. One
+trained policy therefore covers the whole trade-off curve.
 
-``dqn``
-    Value-based control, included because the action space is small and
-    discrete, which is exactly where DQN is meant to be at home.
+Experience is collected from several environments in parallel processes, and
+each algorithm is trained from several random seeds so the results carry
+seed-to-seed uncertainty, not just instance-to-instance.
 
-Training uses only the training half of the instance pool; the evaluation
-callback that decides which checkpoint is "best" sees only the held-out half.
+The best checkpoint is chosen on a fixed set of *selection* worlds that is
+disjoint from the worlds the final evaluation uses, so model selection never
+sees the test set.
 
-    python -m truckdrone.train --algo maskable_ppo --timesteps 300000
-    python -m truckdrone.train --algo all --timesteps 300000
+    python -m truckdrone.train --algo maskable_ppo --seeds 0 1 2 3 4
+    python -m truckdrone.train --algo all
 """
 
 import argparse
+import functools
 import json
 import os
 import time
 
-import numpy as np
-from stable_baselines3 import DQN, PPO
-from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
-from stable_baselines3.common.monitor import Monitor
-
 from . import config
-from .env import TruckDroneEnv
+from .env import PREFERENCE_PRESETS
+from .envs import build_env, limit_worker_threads
 from .scenario import load_scenario, split_instances
+
+# Stable-Baselines3 and PyTorch are imported inside the functions that need
+# them, never at module level. Parallel workers import this module when they
+# start (it is the __main__ they were spawned from); importing PyTorch there
+# would load it once per worker -- see envs.py for what that did.
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(ROOT, "models")
@@ -47,208 +51,209 @@ ALGOS = ("maskable_ppo", "ppo", "dqn")
 
 
 # ======================================================================
-# Environment construction
+# Environments
 # ======================================================================
 
-def make_env(scenario, instance_ids, masked, seed=0, env_kwargs=None):
+def make_vec_env(scenario, instance_ids, n_envs, seed, env_kwargs):
+    from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+
+    thunks = [functools.partial(build_env, scenario, instance_ids,
+                                seed * 1000 + i, env_kwargs) for i in range(n_envs)]
+    if n_envs == 1:
+        return DummyVecEnv(thunks)
+    limit_worker_threads(1)
+    return SubprocVecEnv(thunks, start_method="spawn")
+
+
+def selection_options(n_instances, env_kwargs):
+    """The fixed worlds used to pick the best checkpoint."""
+    prefs = (list(PREFERENCE_PRESETS.values())
+             if env_kwargs.get("preference_conditioned") else [None])
+    return [{"instance": i,
+             "world_seed": config.SELECTION_WORLD_SEED_BASE + i,
+             "preference": prefs[i % len(prefs)]} for i in range(n_instances)]
+
+
+# ======================================================================
+# Logging
+# ======================================================================
+
+def metrics_callback(log_dir):
+    """Per-episode delivery metrics, mirrored to TensorBoard."""
+    from stable_baselines3.common.callbacks import BaseCallback
+
+    class MetricsCallback(BaseCallback):
+        """Per-episode delivery metrics, mirrored to TensorBoard."""
+
+        def __init__(self, log_dir, verbose=0):
+            super().__init__(verbose)
+            self.log_dir = log_dir
+            self.episode_metrics = []
+
+        def _on_step(self):
+            for done, info in zip(self.locals.get("dones", []), self.locals.get("infos", [])):
+                if not done or "served" not in info:
+                    continue
+                b = info["truck_only"]
+                rec = {
+                    "timestep": self.num_timesteps,
+                    "route_complete": bool(info["route_complete"]),
+                    "completion_pct": float(info["completion_pct"]),
+                    "drone_deliveries": info["drone_deliveries"],
+                    "failed_sorties": info["failed_sorties"],
+                    "time_change_pct": (info["total_time_s"] - b["time_s"]) / b["time_s"] * 100,
+                    "cost_change_pct": (info["cost_inr"] - b["cost_inr"]) / b["cost_inr"] * 100,
+                }
+                self.episode_metrics.append(rec)
+                if self.logger:
+                    for k in ("completion_pct", "drone_deliveries", "failed_sorties",
+                              "time_change_pct", "cost_change_pct"):
+                        self.logger.record("delivery/" + k, rec[k])
+            return True
+
+        def _on_training_end(self):
+            if self.episode_metrics:
+                with open(os.path.join(self.log_dir, "episode_metrics.json"), "w") as f:
+                    json.dump(self.episode_metrics, f)
+
+    return MetricsCallback(log_dir)
+
+
+# ======================================================================
+# Models
+# ======================================================================
+
+def _linear(start):
+    return lambda progress_remaining: start * progress_remaining
+
+
+def build_model(algo, env, log_dir, seed):
     """
-    Build one Monitor-wrapped environment.
-
-    For the masked agent the env is additionally wrapped in ``ActionMasker``,
-    which is how sb3-contrib finds the mask function. Everything else about
-    the environment is identical across algorithms, so any difference in the
-    results is attributable to the learning algorithm and not to the task.
+    The two PPO variants share every hyperparameter so the masking comparison
+    isolates masking. The entropy bonus keeps early exploration alive: in this
+    action space a policy can collapse onto "always drive", which completes
+    every route and never discovers that flying pays.
     """
-    env = TruckDroneEnv(scenario, instance_ids=instance_ids,
-                        **(env_kwargs or config.env_kwargs()))
-    if masked:
-        from sb3_contrib.common.wrappers import ActionMasker
-        env = ActionMasker(env, lambda e: e.unwrapped.action_masks())
-    env = Monitor(env)
-    env.reset(seed=seed)
-    return env
+    from stable_baselines3 import DQN, PPO
 
-
-# ======================================================================
-# Logging callback
-# ======================================================================
-
-class MetricsCallback(BaseCallback):
-    """Records per-episode delivery metrics and mirrors them to TensorBoard."""
-
-    def __init__(self, log_dir, verbose=0):
-        super().__init__(verbose)
-        self.log_dir = log_dir
-        self.episode_metrics = []
-
-    def _on_step(self):
-        # The env returns its info dict on every step, so filtering on the
-        # presence of a key would record one row per timestep. Only rows where
-        # the episode actually ended are episode metrics.
-        dones = self.locals.get("dones")
-        if dones is None:
-            dones = self.locals.get("done", [])
-        for done, info in zip(dones, self.locals.get("infos", [])):
-            if not done or "served" not in info:
-                continue
-            record = {
-                "timestep": self.num_timesteps,
-                "completion_pct": info["completion_pct"],
-                "route_complete": bool(info["route_complete"]),
-                "drone_deliveries": info["drone_deliveries"],
-                "truck_deliveries": info["truck_deliveries"],
-                "failed_sorties": info["failed_sorties"],
-                "total_time_min": info["total_time_s"] / 60.0,
-                "truck_km": info["truck_distance_m"] / 1000.0,
-                "baseline_km": info["truck_only"]["distance_m"] / 1000.0,
-            }
-            self.episode_metrics.append(record)
-            if self.logger:
-                self.logger.record("delivery/completion_pct",
-                                   info["completion_pct"])
-                self.logger.record("delivery/drone_deliveries",
-                                   info["drone_deliveries"])
-                self.logger.record("delivery/failed_sorties",
-                                   info["failed_sorties"])
-                self.logger.record("delivery/total_time_min",
-                                   info["total_time_s"] / 60.0)
-                self.logger.record("delivery/truck_km",
-                                   info["truck_distance_m"] / 1000.0)
-        return True
-
-    def _on_training_end(self):
-        if self.episode_metrics:
-            path = os.path.join(self.log_dir, "episode_metrics.json")
-            with open(path, "w") as f:
-                json.dump(self.episode_metrics, f, indent=2)
-            print("[metrics] {} episodes -> {}".format(
-                len(self.episode_metrics), path))
-
-
-# ======================================================================
-# Training
-# ======================================================================
-
-def build_model(algo, env, log_dir, seed=0):
-    """
-    Construct the learner.
-
-    The two PPO variants share every hyperparameter so the masking ablation is
-    clean. ``ent_coef=0.01`` is deliberate: with a near-degenerate action space
-    the policy can collapse onto "always advance the truck" -- which solves the
-    task, badly, and never explores a single sortie. The entropy bonus keeps
-    that door open long enough for the agent to discover that flying pays.
-    """
-    tb = os.path.join(log_dir, "tb")
-    common = dict(verbose=1, seed=seed, tensorboard_log=tb,
-                  policy_kwargs=dict(net_arch=[128, 128]))
-
+    common = dict(verbose=0, seed=seed, tensorboard_log=os.path.join(log_dir, "tb"),
+                  policy_kwargs=dict(net_arch=[256, 256]))
+    ppo_kw = dict(learning_rate=_linear(3e-4), n_steps=1024, batch_size=256,
+                  n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2,
+                  ent_coef=0.01)
     if algo == "maskable_ppo":
         from sb3_contrib import MaskablePPO
-        return MaskablePPO("MlpPolicy", env, learning_rate=3e-4, n_steps=2048,
-                           batch_size=64, n_epochs=10, gamma=0.99,
-                           gae_lambda=0.95, clip_range=0.2, ent_coef=0.01,
-                           **common)
+        return MaskablePPO("MlpPolicy", env, **ppo_kw, **common)
     if algo == "ppo":
-        return PPO("MlpPolicy", env, learning_rate=3e-4, n_steps=2048,
-                   batch_size=64, n_epochs=10, gamma=0.99, gae_lambda=0.95,
-                   clip_range=0.2, ent_coef=0.01, **common)
+        return PPO("MlpPolicy", env, **ppo_kw, **common)
     if algo == "dqn":
-        return DQN("MlpPolicy", env, learning_rate=1e-4, buffer_size=100_000,
-                   learning_starts=5_000, batch_size=64, gamma=0.99,
-                   train_freq=4, target_update_interval=1_000,
-                   exploration_fraction=0.3, exploration_final_eps=0.05,
-                   **common)
+        # One gradient step per vectorised step: with four parallel
+        # environments that is one update per four transitions, the classic
+        # DQN ratio, rather than letting more workers quietly mean fewer
+        # updates per sample.
+        return DQN("MlpPolicy", env, learning_rate=1e-4, buffer_size=200_000,
+                   learning_starts=10_000, batch_size=128, gamma=0.99,
+                   train_freq=1, gradient_steps=1, target_update_interval=2_000,
+                   exploration_fraction=0.3, exploration_final_eps=0.05, **common)
     raise ValueError("Unknown algorithm: {!r}".format(algo))
 
 
-def train(algo, scenario, timesteps=config.TIMESTEPS, seed=config.SEED,
-          model_dir=MODEL_DIR, env_kwargs=None, tag=None):
+def model_dir(tag, seed, root=MODEL_DIR):
+    return os.path.join(root, tag, "seed{}".format(seed))
+
+
+def train(algo, scenario, timesteps, seed=0, env_kwargs=None, tag=None,
+          n_envs=config.N_ENVS, root=MODEL_DIR):
+    import torch
+    from stable_baselines3.common.callbacks import EvalCallback
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    torch.set_num_threads(max(1, int(os.environ.get("TRAIN_TORCH_THREADS", "2"))))
     masked = algo == "maskable_ppo"
     env_kwargs = env_kwargs or config.env_kwargs()
-    log_dir = os.path.join(model_dir, tag or algo)
+    log_dir = model_dir(tag or algo, seed, root)
     os.makedirs(log_dir, exist_ok=True)
 
     train_ids, eval_ids = split_instances(scenario)
-    env = make_env(scenario, train_ids, masked, seed=seed,
-                   env_kwargs=env_kwargs)
-    eval_env = make_env(scenario, eval_ids, masked, seed=seed + 1000,
-                        env_kwargs=env_kwargs)
+    env = make_vec_env(scenario, train_ids, n_envs, seed, env_kwargs)
+    sel_env = DummyVecEnv([functools.partial(
+        build_env, scenario, eval_ids, seed + 777, env_kwargs,
+        selection_options(len(eval_ids), env_kwargs))])
 
     if masked:
-        from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-        eval_cls = MaskableEvalCallback
+        from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback as Eval
     else:
-        eval_cls = EvalCallback
-
-    eval_cb = eval_cls(eval_env, best_model_save_path=os.path.join(log_dir, "best"),
-                       log_path=log_dir, eval_freq=config.EVAL_FREQ,
-                       n_eval_episodes=config.N_EVAL_EPISODES,
-                       deterministic=True, render=False, verbose=1)
-    metrics_cb = MetricsCallback(log_dir)
-
-    model = build_model(algo, env, log_dir, seed=seed)
-
-    print("\n" + "=" * 62)
-    print("  Training {}  ({:,} timesteps)".format(algo, timesteps))
-    print("  {} drones | train instances {} | held-out eval {}".format(
-        env_kwargs["n_drones"], len(train_ids), len(eval_ids)))
-    print("=" * 62)
+        Eval = EvalCallback
+    eval_cb = Eval(sel_env, best_model_save_path=os.path.join(log_dir, "best"),
+                   log_path=log_dir, eval_freq=max(1, config.EVAL_FREQ // n_envs),
+                   n_eval_episodes=config.N_EVAL_EPISODES, deterministic=True,
+                   render=False, verbose=0)
+    model = build_model(algo, env, log_dir, seed)
 
     t0 = time.perf_counter()
-    model.learn(total_timesteps=timesteps, callback=[eval_cb, metrics_cb],
-                progress_bar=False)
-    elapsed = time.perf_counter() - t0
-
-    final_path = os.path.join(log_dir, "final.zip")
-    model.save(final_path)
-    print("\n[{}] trained in {:.1f} min -> {}".format(
-        algo, elapsed / 60.0, final_path))
-
+    print("[{} seed {}] training {:,} steps on {} envs".format(
+        tag or algo, seed, timesteps, n_envs), flush=True)
+    model.learn(total_timesteps=timesteps, callback=[eval_cb, metrics_callback(log_dir)])
+    model.save(os.path.join(log_dir, "final.zip"))
+    minutes = (time.perf_counter() - t0) / 60.0
     env.close()
-    eval_env.close()
-    return {"algo": algo, "timesteps": timesteps,
-            "train_minutes": elapsed / 60.0, "n_drones": env_kwargs["n_drones"],
-            "final_model": final_path,
-            "best_model": os.path.join(log_dir, "best", "best_model.zip")}
+    sel_env.close()
+
+    summary = {"algo": algo, "tag": tag or algo, "seed": seed,
+               "timesteps": timesteps, "train_minutes": minutes,
+               "fps": timesteps / max(minutes * 60, 1e-9), "env_kwargs": env_kwargs}
+    with open(os.path.join(log_dir, "training.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+    print("[{} seed {}] done in {:.1f} min ({:.0f} steps/s)".format(
+        tag or algo, seed, minutes, summary["fps"]), flush=True)
+    return summary
 
 
 def load_policy(algo, path):
-    """Load a trained model by algorithm name."""
+    from stable_baselines3 import DQN, PPO
+
     if algo == "maskable_ppo":
         from sb3_contrib import MaskablePPO
-        return MaskablePPO.load(path)
+        return MaskablePPO.load(path, device="cpu")
     if algo == "ppo":
-        return PPO.load(path)
+        return PPO.load(path, device="cpu")
     if algo == "dqn":
-        return DQN.load(path)
+        return DQN.load(path, device="cpu")
     raise ValueError("Unknown algorithm: {!r}".format(algo))
+
+
+def checkpoint(tag, seed, which="best", root=MODEL_DIR):
+    d = model_dir(tag, seed, root)
+    best = os.path.join(d, "best", "best_model.zip")
+    final = os.path.join(d, "final.zip")
+    if which == "best" and os.path.exists(best):
+        return best
+    return final if os.path.exists(final) else None
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--algo", default="maskable_ppo",
-                    choices=list(ALGOS) + ["all"])
-    ap.add_argument("--timesteps", type=int, default=config.TIMESTEPS)
-    ap.add_argument("--seed", type=int, default=config.SEED)
-    ap.add_argument("--drones", type=int, default=config.N_DRONES)
+    ap.add_argument("--algo", default="maskable_ppo", choices=list(ALGOS) + ["all"])
+    ap.add_argument("--seeds", type=int, nargs="*", default=None)
+    ap.add_argument("--timesteps", type=int, default=None)
+    ap.add_argument("--n-envs", type=int, default=config.N_ENVS)
+    ap.add_argument("--tag", default=None)
+    ap.add_argument("--override", nargs="*", default=[],
+                    help="env overrides as key=value, e.g. rendezvous_options=1")
     args = ap.parse_args()
 
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    os.makedirs(RESULT_DIR, exist_ok=True)
-    scenario = load_scenario()
+    overrides = {}
+    for kv in args.override:
+        k, v = kv.split("=", 1)
+        overrides[k] = json.loads(v)
 
+    scenario = load_scenario(config.CITY)
     algos = list(ALGOS) if args.algo == "all" else [args.algo]
-    summary = {}
     for algo in algos:
-        summary[algo] = train(algo, scenario, timesteps=args.timesteps,
-                              seed=args.seed,
-                              env_kwargs=config.env_kwargs(n_drones=args.drones))
-
-    path = os.path.join(RESULT_DIR, "training_summary.json")
-    with open(path, "w") as f:
-        json.dump(summary, f, indent=2)
-    print("\nTraining summary -> {}".format(path))
+        for seed in (args.seeds if args.seeds is not None else config.SEEDS[algo]):
+            train(algo, scenario, args.timesteps or config.TIMESTEPS[algo], seed=seed,
+                  env_kwargs=config.env_kwargs(**overrides), tag=args.tag or algo,
+                  n_envs=args.n_envs)
 
 
 if __name__ == "__main__":

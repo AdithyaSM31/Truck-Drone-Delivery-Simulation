@@ -1,0 +1,23 @@
+{
+  "algo": "dqn",
+  "tag": "dqn",
+  "seed": 1,
+  "timesteps": 1000000,
+  "train_minutes": 23.079529404999995,
+  "fps": 722.1406630178502,
+  "env_kwargs": {
+    "n_drones": 2,
+    "max_visible_customers": 5,
+    "rendezvous_options": 2,
+    "payload_kg": 1.0,
+    "recharge_pct_per_min": 1.0,
+    "batteries_per_drone": 2,
+    "battery_swap_time_s": 60.0,
+    "truck_service_time_s": 120.0,
+    "replan_tour": true,
+    "stochastic": true,
+    "wind_max_ms": 8.0,
+    "preference_conditioned": true,
+    "time_limit_s": 28800
+  }
+}

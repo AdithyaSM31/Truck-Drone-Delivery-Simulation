@@ -1,0 +1,941 @@
+{
+ "n_seeds": 5,
+ "world_seeds": [
+  101,
+  102,
+  103,
+  104,
+  105
+ ],
+ "n_eval_instances": 20,
+ "pareto": {
+  "grid_step": 0.25,
+  "points": [
+   {
+    "policy": "w=0.00/0.00/1.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.681085663227503,
+    "time_change_pct_ci95": 0.8656242809250491,
+    "energy_change_pct": -24.23679529981341,
+    "energy_change_pct_ci95": 0.9826249900955398,
+    "cost_change_pct": -19.88703519866566,
+    "cost_change_pct_ci95": 1.004252055032966,
+    "co2_change_pct": -23.210760330439562,
+    "truck_km_change_pct": -25.552525191349897,
+    "drone_share_pct": 50.65333333333333,
+    "drone_share_pct_ci95": 2.169183806526484,
+    "truck_wait_min_mean": 3.9500922506380554,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.0,
+     "energy": 0.0,
+     "cost": 1.0
+    }
+   },
+   {
+    "policy": "w=0.00/0.25/0.75",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.73695779314491,
+    "time_change_pct_ci95": 0.7398546650661479,
+    "energy_change_pct": -24.253131422969425,
+    "energy_change_pct_ci95": 0.945641511579654,
+    "cost_change_pct": -19.928415958601697,
+    "cost_change_pct_ci95": 0.955365185717821,
+    "co2_change_pct": -23.226997703468022,
+    "truck_km_change_pct": -25.570856553409264,
+    "drone_share_pct": 50.66666666666665,
+    "drone_share_pct_ci95": 1.9623704149745635,
+    "truck_wait_min_mean": 3.9581144770174346,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.0,
+     "energy": 0.25,
+     "cost": 0.75
+    }
+   },
+   {
+    "policy": "w=0.00/0.50/0.50",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.630797258678637,
+    "time_change_pct_ci95": 0.907926406196864,
+    "energy_change_pct": -24.130237494561676,
+    "energy_change_pct_ci95": 1.0096398411955927,
+    "cost_change_pct": -19.808748972375163,
+    "cost_change_pct_ci95": 1.0864674840108002,
+    "co2_change_pct": -23.10362745073711,
+    "truck_km_change_pct": -25.45620804444014,
+    "drone_share_pct": 50.69333333333332,
+    "drone_share_pct_ci95": 1.8854404219056695,
+    "truck_wait_min_mean": 4.002374945463368,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.0,
+     "energy": 0.5,
+     "cost": 0.5
+    }
+   },
+   {
+    "policy": "w=0.00/0.75/0.25",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.637677681598937,
+    "time_change_pct_ci95": 0.7701451998798646,
+    "energy_change_pct": -24.119052804352435,
+    "energy_change_pct_ci95": 0.797362037439,
+    "cost_change_pct": -19.796033081302685,
+    "cost_change_pct_ci95": 0.9268992285669323,
+    "co2_change_pct": -23.091372774641034,
+    "truck_km_change_pct": -25.45728685634469,
+    "drone_share_pct": 50.786666666666655,
+    "drone_share_pct_ci95": 1.6948195575869145,
+    "truck_wait_min_mean": 4.0670557072901765,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.0,
+     "energy": 0.75,
+     "cost": 0.25
+    }
+   },
+   {
+    "policy": "w=0.00/1.00/0.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.61878298714703,
+    "time_change_pct_ci95": 0.950284331253869,
+    "energy_change_pct": -24.11145209864973,
+    "energy_change_pct_ci95": 0.8831023066944266,
+    "cost_change_pct": -19.781999762899307,
+    "cost_change_pct_ci95": 1.044123383848159,
+    "co2_change_pct": -23.08373223563961,
+    "truck_km_change_pct": -25.454096482470824,
+    "drone_share_pct": 50.79999999999999,
+    "drone_share_pct_ci95": 1.4911460435208443,
+    "truck_wait_min_mean": 4.090774219557522,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.0,
+     "energy": 1.0,
+     "cost": 0.0
+    }
+   },
+   {
+    "policy": "w=0.25/0.00/0.75",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.720012174319912,
+    "time_change_pct_ci95": 0.8047601462719521,
+    "energy_change_pct": -24.118422333880382,
+    "energy_change_pct_ci95": 0.9495267958941582,
+    "cost_change_pct": -19.82149297616524,
+    "cost_change_pct_ci95": 0.9948657404559215,
+    "co2_change_pct": -23.09171177422709,
+    "truck_km_change_pct": -25.427092801078288,
+    "drone_share_pct": 50.959999999999994,
+    "drone_share_pct_ci95": 1.878157890164755,
+    "truck_wait_min_mean": 3.907397056486235,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.25,
+     "energy": 0.0,
+     "cost": 0.75
+    }
+   },
+   {
+    "policy": "w=0.25/0.25/0.50",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.791749979120294,
+    "time_change_pct_ci95": 0.765362323119333,
+    "energy_change_pct": -24.2559810059094,
+    "energy_change_pct_ci95": 0.8240078199562124,
+    "cost_change_pct": -19.90880680128757,
+    "cost_change_pct_ci95": 0.9130835349927546,
+    "co2_change_pct": -23.228147769243282,
+    "truck_km_change_pct": -25.56419796088064,
+    "drone_share_pct": 51.093333333333334,
+    "drone_share_pct_ci95": 1.8607476495994097,
+    "truck_wait_min_mean": 3.901437726590481,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.25,
+     "energy": 0.25,
+     "cost": 0.5
+    }
+   },
+   {
+    "policy": "w=0.25/0.50/0.25",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.75753564874899,
+    "time_change_pct_ci95": 0.7495848908338701,
+    "energy_change_pct": -24.188991478777133,
+    "energy_change_pct_ci95": 0.8082484441579849,
+    "cost_change_pct": -19.857447251172296,
+    "cost_change_pct_ci95": 0.9249641738232113,
+    "co2_change_pct": -23.159272209382657,
+    "truck_km_change_pct": -25.506211166178797,
+    "drone_share_pct": 51.10666666666667,
+    "drone_share_pct_ci95": 1.7691957099077196,
+    "truck_wait_min_mean": 3.9413616917237597,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.25,
+     "energy": 0.5,
+     "cost": 0.25
+    }
+   },
+   {
+    "policy": "w=0.25/0.75/0.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.70834745426405,
+    "time_change_pct_ci95": 0.6907114541381557,
+    "energy_change_pct": -24.08091639748732,
+    "energy_change_pct_ci95": 0.7724242195607977,
+    "cost_change_pct": -19.777462303800075,
+    "cost_change_pct_ci95": 0.8536009455780847,
+    "co2_change_pct": -23.049835445556813,
+    "truck_km_change_pct": -25.413973503651306,
+    "drone_share_pct": 51.173333333333325,
+    "drone_share_pct_ci95": 1.528138167539641,
+    "truck_wait_min_mean": 4.028133817510074,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.25,
+     "energy": 0.75,
+     "cost": 0.0
+    }
+   },
+   {
+    "policy": "w=0.50/0.00/0.50",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.777476354490727,
+    "time_change_pct_ci95": 0.7676967644590171,
+    "energy_change_pct": -24.100920190080462,
+    "energy_change_pct_ci95": 0.9311156814016932,
+    "cost_change_pct": -19.795589527391336,
+    "cost_change_pct_ci95": 0.9829302069346504,
+    "co2_change_pct": -23.070699759274714,
+    "truck_km_change_pct": -25.41204802857987,
+    "drone_share_pct": 51.386666666666656,
+    "drone_share_pct_ci95": 1.951340364980759,
+    "truck_wait_min_mean": 3.9052872258245883,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.5,
+     "energy": 0.0,
+     "cost": 0.5
+    }
+   },
+   {
+    "policy": "w=0.50/0.25/0.25",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.913096136530054,
+    "time_change_pct_ci95": 0.7150919442128891,
+    "energy_change_pct": -24.194764330639774,
+    "energy_change_pct_ci95": 0.8482665732530281,
+    "cost_change_pct": -19.89478577275129,
+    "cost_change_pct_ci95": 0.9304162417854822,
+    "co2_change_pct": -23.162686755679044,
+    "truck_km_change_pct": -25.507940938291288,
+    "drone_share_pct": 51.57333333333334,
+    "drone_share_pct_ci95": 1.8103519760967668,
+    "truck_wait_min_mean": 3.9089187310244653,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.5,
+     "energy": 0.25,
+     "cost": 0.25
+    }
+   },
+   {
+    "policy": "w=0.50/0.50/0.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.9028363685939,
+    "time_change_pct_ci95": 0.7582569518650537,
+    "energy_change_pct": -24.21349692773967,
+    "energy_change_pct_ci95": 0.8951070839651037,
+    "cost_change_pct": -19.908873805648028,
+    "cost_change_pct_ci95": 0.960528157523276,
+    "co2_change_pct": -23.180039393003266,
+    "truck_km_change_pct": -25.526944013130144,
+    "drone_share_pct": 51.493333333333325,
+    "drone_share_pct_ci95": 1.599343777289391,
+    "truck_wait_min_mean": 3.9044510294593606,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.5,
+     "energy": 0.5,
+     "cost": 0.0
+    }
+   },
+   {
+    "policy": "w=0.75/0.00/0.25",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.96380077949029,
+    "time_change_pct_ci95": 0.6133978221942963,
+    "energy_change_pct": -24.19987543074763,
+    "energy_change_pct_ci95": 0.9413153427076978,
+    "cost_change_pct": -19.87696203518877,
+    "cost_change_pct_ci95": 0.9335064121503817,
+    "co2_change_pct": -23.162148589416823,
+    "truck_km_change_pct": -25.500424111682584,
+    "drone_share_pct": 51.999999999999986,
+    "drone_share_pct_ci95": 1.9101727094245577,
+    "truck_wait_min_mean": 3.8213985135643007,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.75,
+     "energy": 0.0,
+     "cost": 0.25
+    }
+   },
+   {
+    "policy": "w=0.75/0.25/0.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -27.03161129681908,
+    "time_change_pct_ci95": 0.6667608882009661,
+    "energy_change_pct": -24.21631803959992,
+    "energy_change_pct_ci95": 0.9104938477928415,
+    "cost_change_pct": -19.92098105665823,
+    "cost_change_pct_ci95": 0.9414942576139309,
+    "co2_change_pct": -23.17577620468699,
+    "truck_km_change_pct": -25.52329847015543,
+    "drone_share_pct": 52.013333333333335,
+    "drone_share_pct_ci95": 1.9257137170138239,
+    "truck_wait_min_mean": 3.845369963410581,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 0.75,
+     "energy": 0.25,
+     "cost": 0.0
+    }
+   },
+   {
+    "policy": "w=1.00/0.00/0.00",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -27.067753397557375,
+    "time_change_pct_ci95": 0.5757410235611825,
+    "energy_change_pct": -24.211943927826802,
+    "energy_change_pct_ci95": 0.8023833221255864,
+    "cost_change_pct": -19.909166334485672,
+    "cost_change_pct_ci95": 0.8526184885164172,
+    "co2_change_pct": -23.169575540599055,
+    "truck_km_change_pct": -25.50591717108089,
+    "drone_share_pct": 52.29333333333333,
+    "drone_share_pct_ci95": 1.9488807650917317,
+    "truck_wait_min_mean": 3.7654020865994995,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0,
+    "weights": {
+     "time": 1.0,
+     "energy": 0.0,
+     "cost": 0.0
+    }
+   }
+  ],
+  "references": [
+   {
+    "policy": "greedy",
+    "n_runs": 100,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.563068910981624,
+    "energy_change_pct": -17.409612993002703,
+    "cost_change_pct": -14.263395968025032,
+    "co2_change_pct": -16.2816271256497,
+    "truck_km_change_pct": -18.630375055317096,
+    "drone_share_pct": 53.73333333333333,
+    "truck_wait_min_mean": 3.0099557595891433,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   {
+    "policy": "always_nearest",
+    "n_runs": 100,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -23.933194574782668,
+    "energy_change_pct": -16.408871766092613,
+    "cost_change_pct": -13.038232827369834,
+    "co2_change_pct": -15.308877572283382,
+    "truck_km_change_pct": -17.322185748211336,
+    "drone_share_pct": 66.99999999999999,
+    "truck_wait_min_mean": 1.381427858864505,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   {
+    "policy": "specialist (time only)",
+    "n_runs": 100,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.915344674598067,
+    "energy_change_pct": -21.995499127434435,
+    "cost_change_pct": -18.19495085070199,
+    "co2_change_pct": -20.906744561209898,
+    "truck_km_change_pct": -23.271447092518336,
+    "drone_share_pct": 58.0,
+    "truck_wait_min_mean": 3.5433226518637975,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   }
+  ]
+ },
+ "robustness": {
+  "wind": [
+   {
+    "wind_ms": 0.0,
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -28.34871101159199,
+      "time_change_pct_ci95": 0.7842042688633016,
+      "energy_change_pct": -25.275419209386378,
+      "energy_change_pct_ci95": 0.8043534934690711,
+      "cost_change_pct": -20.98807119138873,
+      "cost_change_pct_ci95": 0.9247057638843682,
+      "co2_change_pct": -24.23762335764487,
+      "truck_km_change_pct": -26.487598754598594,
+      "drone_share_pct": 53.22666666666667,
+      "drone_share_pct_ci95": 1.4791502431091401,
+      "truck_wait_min_mean": 3.3226663918260626,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -23.186028485303442,
+      "energy_change_pct": -18.229504683272662,
+      "cost_change_pct": -14.961088307283024,
+      "co2_change_pct": -17.10978244894045,
+      "truck_km_change_pct": -19.345659529933684,
+      "drone_share_pct": 53.53333333333334,
+      "truck_wait_min_mean": 2.4413615313083956,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -24.77739573878981,
+      "energy_change_pct": -17.029564057853595,
+      "cost_change_pct": -13.688560179739447,
+      "co2_change_pct": -15.933206330636942,
+      "truck_km_change_pct": -17.899265892491293,
+      "drone_share_pct": 67.93333333333332,
+      "truck_wait_min_mean": 1.1289167524965587,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   },
+   {
+    "wind_ms": 4.0,
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -27.116100206510986,
+      "time_change_pct_ci95": 0.5634490414666573,
+      "energy_change_pct": -24.35827128382206,
+      "energy_change_pct_ci95": 0.7912925313624679,
+      "cost_change_pct": -19.99286045039449,
+      "cost_change_pct_ci95": 0.7853980671772193,
+      "co2_change_pct": -23.317839798839536,
+      "truck_km_change_pct": -25.646889370785168,
+      "drone_share_pct": 52.386666666666656,
+      "drone_share_pct_ci95": 1.6968398462498042,
+      "truck_wait_min_mean": 3.747472954945688,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -22.144258492282503,
+      "energy_change_pct": -17.85404981722793,
+      "cost_change_pct": -14.227983163916846,
+      "co2_change_pct": -16.71791107679362,
+      "truck_km_change_pct": -19.15156813305178,
+      "drone_share_pct": 53.46666666666667,
+      "truck_wait_min_mean": 3.442807961597919,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -23.416504272179004,
+      "energy_change_pct": -16.07768519530962,
+      "cost_change_pct": -12.716624897859258,
+      "co2_change_pct": -14.989384883640113,
+      "truck_km_change_pct": -16.943161315114533,
+      "drone_share_pct": 66.06666666666666,
+      "truck_wait_min_mean": 1.138943736593324,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   },
+   {
+    "wind_ms": 8.0,
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -22.70330901227279,
+      "time_change_pct_ci95": 0.8297784785655331,
+      "energy_change_pct": -20.461362255590977,
+      "energy_change_pct_ci95": 0.9478894804426573,
+      "cost_change_pct": -16.176492982588464,
+      "cost_change_pct_ci95": 1.0552900972155235,
+      "co2_change_pct": -19.449450470906587,
+      "truck_km_change_pct": -21.95782695248024,
+      "drone_share_pct": 49.14666666666667,
+      "drone_share_pct_ci95": 2.485672255248614,
+      "truck_wait_min_mean": 5.016488808802835,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -20.582899070668745,
+      "energy_change_pct": -16.675153333672583,
+      "cost_change_pct": -12.831971606918154,
+      "co2_change_pct": -15.55507471890963,
+      "truck_km_change_pct": -18.181364923487507,
+      "drone_share_pct": 53.466666666666676,
+      "truck_wait_min_mean": 4.711894833893138,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -21.331774528369518,
+      "energy_change_pct": -14.057524372312743,
+      "cost_change_pct": -11.021656678001712,
+      "co2_change_pct": -12.97427271082448,
+      "truck_km_change_pct": -15.080799061463354,
+      "drone_share_pct": 63.13333333333333,
+      "truck_wait_min_mean": 2.0558109102519673,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   },
+   {
+    "wind_ms": 12.0,
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -16.408216585553408,
+      "time_change_pct_ci95": 0.5700825416961846,
+      "energy_change_pct": -14.41493749452665,
+      "energy_change_pct_ci95": 0.30723863650154076,
+      "cost_change_pct": -10.847965234793177,
+      "cost_change_pct_ci95": 0.39807130480445607,
+      "co2_change_pct": -13.553221876636474,
+      "truck_km_change_pct": -15.926789635501569,
+      "drone_share_pct": 41.519999999999996,
+      "drone_share_pct_ci95": 2.5062618630425897,
+      "truck_wait_min_mean": 5.651527833514769,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -17.408572155247356,
+      "energy_change_pct": -13.501183767057332,
+      "cost_change_pct": -10.53936869160182,
+      "co2_change_pct": -12.566518811914897,
+      "truck_km_change_pct": -14.715225207236218,
+      "drone_share_pct": 45.33333333333332,
+      "truck_wait_min_mean": 3.6827580092944663,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -16.629521817444655,
+      "energy_change_pct": -10.910048909944186,
+      "cost_change_pct": -8.198536750312737,
+      "co2_change_pct": -9.975833348217732,
+      "truck_km_change_pct": -12.195456077285634,
+      "drone_share_pct": 52.46666666666666,
+      "truck_wait_min_mean": 4.076708750019189,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   }
+  ],
+  "traffic": [
+   {
+    "regime": "calm",
+    "params": {
+     "rush_peak": 1.0,
+     "traffic_sigma": 0.05,
+     "day_sigma": 0.05
+    },
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -27.177499052452372,
+      "time_change_pct_ci95": 0.840121482602537,
+      "energy_change_pct": -23.786199681605147,
+      "energy_change_pct_ci95": 1.3144125862852403,
+      "cost_change_pct": -19.423976527746678,
+      "cost_change_pct_ci95": 1.1847031684658866,
+      "co2_change_pct": -22.768948925683286,
+      "truck_km_change_pct": -25.243789917852457,
+      "drone_share_pct": 51.37333333333332,
+      "drone_share_pct_ci95": 1.4079493991020358,
+      "truck_wait_min_mean": 4.806668941285895,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -22.123709506836168,
+      "energy_change_pct": -16.9036089110454,
+      "cost_change_pct": -13.493643239073206,
+      "co2_change_pct": -15.838189421709485,
+      "truck_km_change_pct": -18.233933941081943,
+      "drone_share_pct": 51.60000000000001,
+      "truck_wait_min_mean": 3.887487903758839,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -24.45555203541453,
+      "energy_change_pct": -15.649813215331772,
+      "cost_change_pct": -12.640775915974718,
+      "co2_change_pct": -14.60361053501084,
+      "truck_km_change_pct": -16.53903487030395,
+      "drone_share_pct": 63.93333333333332,
+      "truck_wait_min_mean": 1.4260120122941005,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   },
+   {
+    "regime": "nominal",
+    "params": {},
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -27.067753397557375,
+      "time_change_pct_ci95": 0.5757410235611825,
+      "energy_change_pct": -24.211943927826802,
+      "energy_change_pct_ci95": 0.8023833221255864,
+      "cost_change_pct": -19.909166334485672,
+      "cost_change_pct_ci95": 0.8526184885164172,
+      "co2_change_pct": -23.169575540599055,
+      "truck_km_change_pct": -25.50591717108089,
+      "drone_share_pct": 52.29333333333333,
+      "drone_share_pct_ci95": 1.9488807650917317,
+      "truck_wait_min_mean": 3.7654020865994995,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -22.563068910981624,
+      "energy_change_pct": -17.409612993002703,
+      "cost_change_pct": -14.263395968025032,
+      "co2_change_pct": -16.2816271256497,
+      "truck_km_change_pct": -18.630375055317096,
+      "drone_share_pct": 53.73333333333333,
+      "truck_wait_min_mean": 3.0099557595891433,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -23.933194574782668,
+      "energy_change_pct": -16.408871766092613,
+      "cost_change_pct": -13.038232827369834,
+      "co2_change_pct": -15.308877572283382,
+      "truck_km_change_pct": -17.322185748211336,
+      "drone_share_pct": 66.99999999999999,
+      "truck_wait_min_mean": 1.381427858864505,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   },
+   {
+    "regime": "heavy",
+    "params": {
+     "rush_peak": 2.5,
+     "traffic_sigma": 0.3,
+     "day_sigma": 0.2
+    },
+    "results": [
+     {
+      "policy": "maskable_ppo",
+      "n_seeds": 5,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -27.806527766358652,
+      "time_change_pct_ci95": 1.0355944032545878,
+      "energy_change_pct": -23.962883886810936,
+      "energy_change_pct_ci95": 0.7013452658815585,
+      "cost_change_pct": -20.810308797976653,
+      "cost_change_pct_ci95": 0.9928874838449444,
+      "co2_change_pct": -22.909742066379938,
+      "truck_km_change_pct": -25.31829950138909,
+      "drone_share_pct": 52.77333333333333,
+      "drone_share_pct_ci95": 1.9974974106913665,
+      "truck_wait_min_mean": 4.081818777158455,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "greedy",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -23.65591117085043,
+      "energy_change_pct": -18.25710217643903,
+      "cost_change_pct": -15.821635216821036,
+      "co2_change_pct": -17.09627022497398,
+      "truck_km_change_pct": -19.508665758607588,
+      "drone_share_pct": 54.39999999999999,
+      "truck_wait_min_mean": 3.0818464581844847,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     },
+     {
+      "policy": "always_nearest",
+      "n_runs": 100,
+      "completion_rate_pct": 100.0,
+      "time_change_pct": -23.989287385571206,
+      "energy_change_pct": -16.53237998173033,
+      "cost_change_pct": -13.895331316887603,
+      "co2_change_pct": -15.408348893974464,
+      "truck_km_change_pct": -17.542602885626266,
+      "drone_share_pct": 67.80000000000001,
+      "truck_wait_min_mean": 1.8416180492799206,
+      "failed_sorties_mean": 0.0,
+      "battery_deaths_total": 0
+     }
+    ]
+   }
+  ],
+  "training_wind_max_ms": 8.0
+ },
+ "scale": [
+  {
+   "customers": 10,
+   "n_instances": 20,
+   "results": [
+    {
+     "policy": "maskable_ppo",
+     "n_seeds": 5,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -23.748866464405488,
+     "time_change_pct_ci95": 1.291540849120224,
+     "energy_change_pct": -22.46805030584819,
+     "energy_change_pct_ci95": 1.2295167739757555,
+     "cost_change_pct": -18.313327660066186,
+     "cost_change_pct_ci95": 1.3513253726336782,
+     "co2_change_pct": -21.56116322627983,
+     "truck_km_change_pct": -23.679285554514603,
+     "drone_share_pct": 50.74,
+     "drone_share_pct_ci95": 2.593562364893403,
+     "truck_wait_min_mean": 3.021801598596793,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    },
+    {
+     "policy": "greedy",
+     "n_runs": 100,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -23.58473098614569,
+     "energy_change_pct": -20.773036144126962,
+     "cost_change_pct": -17.242754803790966,
+     "co2_change_pct": -19.775077187282236,
+     "truck_km_change_pct": -21.989116832006026,
+     "drone_share_pct": 53.8,
+     "truck_wait_min_mean": 2.8252201742801395,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    },
+    {
+     "policy": "always_nearest",
+     "n_runs": 100,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -20.142797951538043,
+     "energy_change_pct": -14.254164130879444,
+     "cost_change_pct": -11.08427913553614,
+     "co2_change_pct": -13.238715591667772,
+     "truck_km_change_pct": -15.018022971475084,
+     "drone_share_pct": 66.6,
+     "truck_wait_min_mean": 0.640562567066985,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    }
+   ]
+  },
+  {
+   "customers": 20,
+   "n_instances": 20,
+   "results": [
+    {
+     "policy": "maskable_ppo",
+     "n_seeds": 5,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -28.00093000950998,
+     "time_change_pct_ci95": 0.79170845306944,
+     "energy_change_pct": -24.651997235252818,
+     "energy_change_pct_ci95": 1.3935625975837655,
+     "cost_change_pct": -20.186375706445517,
+     "cost_change_pct_ci95": 1.230951363537959,
+     "co2_change_pct": -23.584766858723288,
+     "truck_km_change_pct": -26.066948512589004,
+     "drone_share_pct": 51.160000000000004,
+     "drone_share_pct_ci95": 1.839277010464244,
+     "truck_wait_min_mean": 5.142196169217339,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    },
+    {
+     "policy": "greedy",
+     "n_runs": 100,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -22.463858135587955,
+     "energy_change_pct": -17.591914817998557,
+     "cost_change_pct": -14.057627255088052,
+     "co2_change_pct": -16.45486595006023,
+     "truck_km_change_pct": -18.85986479082513,
+     "drone_share_pct": 50.6,
+     "truck_wait_min_mean": 3.9123788527946988,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    },
+    {
+     "policy": "always_nearest",
+     "n_runs": 100,
+     "completion_rate_pct": 100.0,
+     "time_change_pct": -26.740633517336363,
+     "energy_change_pct": -18.03988228432702,
+     "cost_change_pct": -15.042929689426309,
+     "co2_change_pct": -16.937554471907028,
+     "truck_km_change_pct": -18.982364394357777,
+     "drone_share_pct": 63.75,
+     "truck_wait_min_mean": 1.8281283914733313,
+     "failed_sorties_mean": 0.0,
+     "battery_deaths_total": 0
+    }
+   ]
+  }
+ ],
+ "transfer": {
+  "city": "chennai",
+  "n_instances": 20,
+  "intersections": 16139,
+  "tortuosity_mean": 1.3802102245836856,
+  "asymmetric_pair_fraction": 0.830204081632653,
+  "results": [
+   {
+    "policy": "maskable_ppo",
+    "n_seeds": 5,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -24.73187358394084,
+    "time_change_pct_ci95": 0.9648575074467883,
+    "energy_change_pct": -21.762305371824958,
+    "energy_change_pct_ci95": 1.3539629930262704,
+    "cost_change_pct": -17.308493866899962,
+    "cost_change_pct_ci95": 1.2885775816720493,
+    "co2_change_pct": -20.662960473125484,
+    "truck_km_change_pct": -23.26664591452509,
+    "drone_share_pct": 50.866666666666674,
+    "drone_share_pct_ci95": 1.6326294666312553,
+    "truck_wait_min_mean": 4.423871566741382,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   {
+    "policy": "greedy",
+    "n_runs": 100,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -20.66811413562534,
+    "energy_change_pct": -16.271165574021595,
+    "cost_change_pct": -12.492015857817853,
+    "co2_change_pct": -15.06401832642403,
+    "truck_km_change_pct": -17.91099898168423,
+    "drone_share_pct": 52.06666666666667,
+    "truck_wait_min_mean": 4.806436894321108,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   {
+    "policy": "always_nearest",
+    "n_runs": 100,
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.919330097926235,
+    "energy_change_pct": -15.166712898451292,
+    "cost_change_pct": -11.970454000416694,
+    "co2_change_pct": -14.01971451822801,
+    "truck_km_change_pct": -16.075561172332286,
+    "drone_share_pct": 62.86666666666666,
+    "truck_wait_min_mean": 1.0850954480394965,
+    "failed_sorties_mean": 0.0,
+    "battery_deaths_total": 0
+   }
+  ]
+ }
+}

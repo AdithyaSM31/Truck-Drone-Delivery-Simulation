@@ -2,50 +2,62 @@
 Dashboard server.
 
 A small Flask app that runs policies on demand and hands the browser an
-animation trace. The heavy objects -- the scenario, the road graph, the loaded
-policy networks -- are built once and kept in memory, so switching policy or
-instance in the UI costs a rollout and nothing more.
+animation trace. Scenarios, street geometry and loaded policy networks are
+built once and kept in memory, so switching city, policy, preference,
+instance or world costs one rollout and nothing more.
 
     python dashboard/server.py
     -> http://127.0.0.1:5000
 """
 
-import json
 import os
 import sys
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from truckdrone.baselines import POLICIES          # noqa: E402
-from truckdrone.rollout import make_rollout        # noqa: E402
-from truckdrone.scenario import (build_graph, load_scenario,  # noqa: E402
-                                 split_instances)
-from truckdrone.train import ALGOS                 # noqa: E402
+from truckdrone import catalog, config               # noqa: E402
+from truckdrone.baselines import POLICIES            # noqa: E402
+from truckdrone.rollout import (baseline_trace, build_trace,  # noqa: E402
+                                map_payload)
+from truckdrone.scenario import load_scenario        # noqa: E402
 
 STATIC_DIR = os.path.join(ROOT, "dashboard", "static")
-MODEL_DIR = os.path.join(ROOT, "models")
-RESULT_DIR = os.path.join(ROOT, "results")
+MAP_DIR = os.path.join(ROOT, "results", "maps")
 
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="")
 
-_state = {}
-_cache = {}
+_scenarios, _policies, _cache = {}, {}, {}
+_info = {}
 
 
-def state():
-    """Load the scenario and road graph once, on first request."""
-    if not _state:
-        print("[server] loading scenario ...")
-        scenario = load_scenario()
-        _state["scenario"] = scenario
-        _state["graph"] = build_graph(scenario["coords"])
-        _state["eval_ids"] = split_instances(scenario)[1]
-        print("[server] ready: {} nodes, {} held-out instances".format(
-            scenario["n_nodes"], len(_state["eval_ids"])))
-    return _state
+def scenario(city):
+    if city not in (config.CITY, config.TRANSFER_CITY):
+        abort(404)
+    if city not in _scenarios:
+        _scenarios[city] = load_scenario(city)
+    return _scenarios[city]
+
+
+def policy(name):
+    """(policy object, is_sb3, masked) -- networks loaded once."""
+    if name in POLICIES:
+        return POLICIES[name](), False, False
+    if name not in _policies:
+        from truckdrone.train import load_policy
+        models = catalog.learned_models()
+        if name not in models:
+            abort(404)
+        _policies[name] = load_policy(name, models[name][1])
+    return _policies[name], True, name == "maskable_ppo"
+
+
+def cached(key, make):
+    if key not in _cache:
+        _cache[key] = make()
+    return _cache[key]
 
 
 @app.route("/")
@@ -55,51 +67,56 @@ def index():
 
 @app.route("/api/info")
 def info():
-    """Which policies can be run, and how many instances are available."""
-    s = state()
-    trained = [a for a in ALGOS
-               if os.path.exists(os.path.join(MODEL_DIR, a, "best", "best_model.zip"))
-               or os.path.exists(os.path.join(MODEL_DIR, a, "final.zip"))]
-    return jsonify({
-        "heuristics": list(POLICIES.keys()),
-        "trained": trained,
-        "n_instances": len(s["eval_ids"]),
-        "n_customers": len(s["scenario"]["instances"][0]["customers"]),
-        "n_nodes": s["scenario"]["n_nodes"],
-        "n_edges": s["scenario"]["n_edges"],
-        "region": "Whitefield, Bengaluru",
-        "area_km": s["scenario"]["area_km"],
-    })
+    if not _info:
+        _info.update(catalog.info())
+    return jsonify(_info)
+
+
+@app.route("/api/map")
+def city_map():
+    city = request.args.get("city", config.CITY)
+    scenario(city)
+    return jsonify(cached(("map", city), lambda: map_payload(city)))
 
 
 @app.route("/api/rollout")
 def rollout():
-    policy = request.args.get("policy", "greedy")
+    city = request.args.get("city", config.CITY)
+    name = request.args.get("policy", "greedy")
+    pref = request.args.get("preference", config.HEADLINE_PREFERENCE)
+    if pref not in catalog.preferences_for(name):
+        pref = config.HEADLINE_PREFERENCE
     instance = int(request.args.get("instance", 0))
-    key = (policy, instance)
+    world = int(request.args.get("world", config.EVAL_WORLD_SEEDS[0]))
 
-    if key not in _cache:
-        s = state()
-        try:
-            _cache[key] = make_rollout(s["scenario"], s["graph"], policy,
-                                       instance=instance, model_dir=MODEL_DIR)
-        except FileNotFoundError as exc:
-            return jsonify({"error": str(exc)}), 404
-    return jsonify(_cache[key])
+    def make():
+        pol, is_sb3, masked = policy(name)
+        return build_trace(scenario(city), instance, world, pol, name, pref,
+                           is_sb3=is_sb3, masked=masked, include_baseline=False)
+    return jsonify(cached(("roll", city, name, pref, instance, world), make))
+
+
+@app.route("/api/baseline")
+def baseline():
+    city = request.args.get("city", config.CITY)
+    instance = int(request.args.get("instance", 0))
+    world = int(request.args.get("world", config.EVAL_WORLD_SEEDS[0]))
+    return jsonify(cached(("base", city, instance, world),
+                          lambda: baseline_trace(scenario(city), instance, world)))
 
 
 @app.route("/api/results")
 def results():
-    """The saved evaluation table, if `python -m truckdrone.evaluate` has run."""
-    path = os.path.join(RESULT_DIR, "evaluation.json")
-    if not os.path.exists(path):
+    data = catalog.results_payload()
+    if data is None:
         return jsonify({"error": "No evaluation.json yet. Run: "
                                  "python -m truckdrone.evaluate"}), 404
-    with open(path) as f:
-        data = json.load(f)
-    return jsonify({"n_eval_instances": data["n_eval_instances"],
-                    "n_customers": data["n_customers"],
-                    "summaries": data["summaries"]})
+    return jsonify(data)
+
+
+@app.route("/maps/<path:name>")
+def real_map(name):
+    return send_from_directory(MAP_DIR, name)
 
 
 def port_is_taken(host="127.0.0.1", port=5000):
@@ -127,6 +144,6 @@ if __name__ == "__main__":
             "  Starting a second here would serve stale content.\n"
             .format(HOST, PORT))
 
-    state()
+    scenario(config.CITY)
     print("\n  Dashboard -> http://{}:{}\n".format(HOST, PORT))
     app.run(host=HOST, port=PORT, debug=False)

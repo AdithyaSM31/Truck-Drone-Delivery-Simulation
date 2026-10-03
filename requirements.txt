@@ -1,22 +1,29 @@
 # Core numerics
 numpy>=1.26
 scipy>=1.11
-scikit-learn>=1.3
+scikit-learn>=1.3         # MDS embedding of the road network (scenario build only)
 networkx>=3.1
+
+# Real street networks
+osmnx>=2.0                # OpenStreetMap drive graphs (scenario build only)
+pyproj>=3.6               # lon/lat <-> UTM metres
 
 # Reinforcement learning
 gymnasium>=1.0
 stable-baselines3>=2.3
 sb3-contrib>=2.3          # MaskablePPO -- action masking
 torch>=2.2
+tensorboard>=2.15
 
 # Classical optimisation baseline
 ortools>=9.8
 
-# Dashboard
+# Dashboard and real-street maps
 flask>=3.0
+folium>=0.17
 
 # Plots and reporting
 matplotlib>=3.8
-pandas>=2.0
-tensorboard>=2.15
+
+# Tests
+pytest>=8.0

@@ -1,30 +1,25 @@
 """
 Evaluation.
 
-Every policy is scored on the held-out instance half through one shared code
-path, and each hybrid run is compared against the OR-Tools truck-only baseline
-*for that same instance*, so the comparison is paired and instance difficulty
-cancels out.
+Every policy is scored on the 20 held-out instances, each in several fixed
+*worlds* (traffic, wind, start hour), and compared with the OR-Tools
+truck-only tour driven through the very same world. Comparisons are paired by
+(instance, world), so both the delivery problem and the weather cancel out.
+
+Learned agents are trained from several random seeds, and every number for
+them is reported as a mean across seeds with a 95% confidence interval -- the
+uncertainty that matters for "would this method work again", not just "did
+this one run work".
 
 WHY THIS FILE IS CAREFUL ABOUT INCOMPLETE ROUTES
 ------------------------------------------------
-An episode can end with customers unserved. Such a run finishes fast and burns
-little energy, for the worst possible reason: the agent gave up. Averaging
-those runs into a delivery-time comparison produces a large fake improvement --
-an earlier version of this project reported a 15% time saving that was almost
-entirely two runs which abandoned 13 of 15 packages.
+A route that abandons customers finishes fast. An earlier version of this
+project reported a 15% saving that was almost entirely two runs which
+abandoned 13 of 15 packages. Completion is therefore reported on its own, and
+time, energy and cost are averaged over completed routes only; a policy that
+completes too few gets no delivery statistic at all.
 
-So the report has two tiers:
-
-    completion_rate     the fraction of runs that delivered every package.
-                        A policy that scores badly here has failed, full stop.
-
-    time / energy       computed over completed runs only, and stated with the
-                        number of runs behind them.
-
-If a policy completes too few routes to support a meaningful average, the
-comparison is reported as ``None`` rather than filled in with whatever the
-surviving runs happened to say.
+    python -m truckdrone.evaluate
 """
 
 import argparse
@@ -35,222 +30,224 @@ import numpy as np
 
 from . import config
 from .baselines import POLICIES
-from .env import TruckDroneEnv
+from .env import PREFERENCE_PRESETS, TruckDroneEnv
 from .scenario import load_scenario, split_instances
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(ROOT, "models")
 RESULT_DIR = os.path.join(ROOT, "results")
-
 MIN_COMPLETED_FOR_STATS = 5
+METRICS = ("time", "energy", "cost", "co2", "truck_km")
 
 
 # ======================================================================
-# Rollout
+# Rollouts
 # ======================================================================
 
-def run_episode(env, policy, instance, is_sb3, masked, deterministic=True):
-    """Run one instance under one policy and return its final info dict."""
-    obs, _ = env.reset(options={"instance": instance})
-    done = False
-    steps = 0
+def act(policy, obs, env, is_sb3, masked):
+    if not is_sb3:
+        return int(policy.predict(obs, env))
+    if masked:
+        a, _ = policy.predict(obs, action_masks=env.action_masks(), deterministic=True)
+    else:
+        a, _ = policy.predict(obs, deterministic=True)
+    return int(a)
+
+
+def run_episode(env, policy, options, is_sb3=False, masked=False):
+    obs, _ = env.reset(options=options)
+    if hasattr(policy, "reset"):
+        policy.reset()
+    done, steps = False, 0
     while not done:
-        if is_sb3:
-            if masked:
-                action, _ = policy.predict(
-                    obs, action_masks=env.action_masks(),
-                    deterministic=deterministic)
-            else:
-                action, _ = policy.predict(obs, deterministic=deterministic)
-            action = int(action)
-        else:
-            action = int(policy.predict(obs, env))
-        obs, _, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
+        obs, _, te, tr, info = env.step(act(policy, obs, env, is_sb3, masked))
+        done = te or tr
         steps += 1
     info = dict(info)
     info["steps"] = steps
     return info
 
 
+def _record(info, instance_id, world_seed):
+    b = info["truck_only"]
+    return {
+        "instance": int(instance_id), "world_seed": int(world_seed),
+        "route_complete": bool(info["route_complete"]),
+        "completion_pct": float(info["completion_pct"]),
+        "customers": int(info["total_customers"]),
+        "time_min": info["total_time_s"] / 60.0, "base_time_min": b["time_s"] / 60.0,
+        "energy_kwh": info["total_energy_wh"] / 1000.0,
+        "base_energy_kwh": b["energy_wh"] / 1000.0,
+        "cost_inr": info["cost_inr"], "base_cost_inr": b["cost_inr"],
+        "co2_kg": info["co2_kg"], "base_co2_kg": b["co2_kg"],
+        "truck_km": info["truck_distance_m"] / 1000.0,
+        "base_truck_km": b["distance_m"] / 1000.0,
+        "drone_km": info["drone_distance_m"] / 1000.0,
+        "drone_deliveries": int(info["drone_deliveries"]),
+        "failed_sorties": int(info["failed_sorties"]),
+        "battery_deaths": int(info["battery_deaths"]),
+        "battery_swaps": int(info["battery_swaps"]),
+        "min_battery_pct": float(info["min_battery_pct"]),
+        "truck_wait_min": info["truck_wait_time_s"] / 60.0,
+        "late_rendezvous": int(info["late_rendezvous"]),
+        "replans": int(info["replans"]),
+        "wind_ms": float(info["wind_ms"]),
+    }
+
+
 def evaluate_policy(policy, scenario, instance_ids, is_sb3=False, masked=False,
-                    env_kwargs=None):
-    """Score one policy across every evaluation instance."""
+                    env_kwargs=None, world_seeds=config.EVAL_WORLD_SEEDS,
+                    preference=config.HEADLINE_PREFERENCE):
+    """Score one policy on every held-out instance in every world."""
+    pref = PREFERENCE_PRESETS.get(preference, preference)
     env = TruckDroneEnv(scenario, instance_ids=instance_ids,
                         **(env_kwargs or config.env_kwargs()))
     runs = []
-    for i in range(len(instance_ids)):
-        info = run_episode(env, policy, i, is_sb3, masked)
-        baseline = info["truck_only"]
-        runs.append({
-            "instance": int(instance_ids[i]),
-            "route_complete": bool(info["route_complete"]),
-            "completion_pct": float(info["completion_pct"]),
-            "served": int(info["served"]),
-            "customers": int(info["total_customers"]),
-            "hybrid_time_min": info["total_time_s"] / 60.0,
-            "baseline_time_min": baseline["time_s"] / 60.0,
-            "hybrid_energy_wh": info["total_energy_wh"],
-            "baseline_energy_wh": baseline["energy_wh"],
-            "truck_km": info["truck_distance_m"] / 1000.0,
-            "baseline_km": baseline["distance_m"] / 1000.0,
-            "drone_km": info["drone_distance_m"] / 1000.0,
-            "drone_deliveries": int(info["drone_deliveries"]),
-            "truck_deliveries": int(info["truck_deliveries"]),
-            "failed_sorties": int(info["failed_sorties"]),
-            "battery_deaths": int(info["battery_deaths"]),
-            "battery_swaps": int(info["battery_swaps"]),
-            "min_battery_pct": float(info["min_battery_pct"]),
-            "truck_wait_min": info["truck_wait_time_s"] / 60.0,
-            "steps": info["steps"],
-        })
+    for i, inst in enumerate(instance_ids):
+        for ws in world_seeds:
+            info = run_episode(env, policy, {"instance": i, "world_seed": ws,
+                                             "preference": pref}, is_sb3, masked)
+            runs.append(_record(info, inst, ws))
     env.close()
     return runs
 
 
 # ======================================================================
-# Summary
+# Summaries
 # ======================================================================
 
-def _pct_change(new, old):
-    """Signed percentage change; negative means the hybrid system did better."""
-    return float(np.mean([(n - o) / o * 100.0 for n, o in zip(new, old)]))
+def _pct(rows, key):
+    """Mean paired % change against the truck-only baseline in the same world."""
+    return float(np.mean([(r[key] - r["base_" + key]) / r["base_" + key] * 100
+                          for r in rows]))
 
 
 def summarise(runs, label):
-    """
-    Reduce a set of runs to headline numbers.
-
-    Completion is measured over everything. Time, energy and distance are
-    measured over completed runs only, because a route that skipped customers
-    is not comparable to one that served them all.
-    """
     n = len(runs)
-    completed = [r for r in runs if r["route_complete"]]
-    summary = {
-        "policy": label,
-        "n_instances": n,
-        "n_completed": len(completed),
-        "completion_rate_pct": 100.0 * len(completed) / max(1, n),
-        "mean_completion_pct": float(np.mean([r["completion_pct"] for r in runs])),
+    done = [r for r in runs if r["route_complete"]]
+    s = {
+        "policy": label, "n_runs": n, "n_completed": len(done),
+        "completion_rate_pct": 100.0 * len(done) / max(1, n),
         "failed_sorties_mean": float(np.mean([r["failed_sorties"] for r in runs])),
         "battery_deaths_total": int(sum(r["battery_deaths"] for r in runs)),
     }
-
-    if len(completed) < MIN_COMPLETED_FOR_STATS:
-        summary.update({
-            "stats_basis": "insufficient",
-            "note": ("only {}/{} routes completed -- too few to quote a "
-                     "delivery-time comparison".format(len(completed), n)),
-            "time_change_pct": None,
-            "energy_change_pct": None,
-            "truck_km_change_pct": None,
-        })
-        return summary
-
-    summary.update({
+    if len(done) < MIN_COMPLETED_FOR_STATS:
+        s.update({"stats_basis": "insufficient",
+                  **{m + "_change_pct": None for m in METRICS}})
+        return s
+    s.update({
         "stats_basis": "completed_routes_only",
-        "hybrid_time_min_mean": float(np.mean([r["hybrid_time_min"] for r in completed])),
-        "hybrid_time_min_std": float(np.std([r["hybrid_time_min"] for r in completed])),
-        "baseline_time_min_mean": float(np.mean([r["baseline_time_min"] for r in completed])),
-        "time_change_pct": _pct_change(
-            [r["hybrid_time_min"] for r in completed],
-            [r["baseline_time_min"] for r in completed]),
-        "hybrid_energy_wh_mean": float(np.mean([r["hybrid_energy_wh"] for r in completed])),
-        "baseline_energy_wh_mean": float(np.mean([r["baseline_energy_wh"] for r in completed])),
-        "energy_change_pct": _pct_change(
-            [r["hybrid_energy_wh"] for r in completed],
-            [r["baseline_energy_wh"] for r in completed]),
-        "truck_km_mean": float(np.mean([r["truck_km"] for r in completed])),
-        "baseline_km_mean": float(np.mean([r["baseline_km"] for r in completed])),
-        "truck_km_change_pct": _pct_change(
-            [r["truck_km"] for r in completed],
-            [r["baseline_km"] for r in completed]),
-        "drone_km_mean": float(np.mean([r["drone_km"] for r in completed])),
-        "drone_deliveries_mean": float(np.mean([r["drone_deliveries"] for r in completed])),
-        "drone_share_pct": float(np.mean(
-            [100.0 * r["drone_deliveries"] / r["customers"] for r in completed])),
-        "truck_wait_min_mean": float(np.mean([r["truck_wait_min"] for r in completed])),
-        "min_battery_pct_mean": float(np.mean([r["min_battery_pct"] for r in completed])),
-        "battery_swaps_mean": float(np.mean([r["battery_swaps"] for r in completed])),
+        "time_min_mean": float(np.mean([r["time_min"] for r in done])),
+        "base_time_min_mean": float(np.mean([r["base_time_min"] for r in done])),
+        "truck_km_mean": float(np.mean([r["truck_km"] for r in done])),
+        "cost_inr_mean": float(np.mean([r["cost_inr"] for r in done])),
+        "co2_kg_mean": float(np.mean([r["co2_kg"] for r in done])),
+        "time_change_pct": _pct(done, "time_min"),
+        "energy_change_pct": _pct(done, "energy_kwh"),
+        "cost_change_pct": _pct(done, "cost_inr"),
+        "co2_change_pct": _pct(done, "co2_kg"),
+        "truck_km_change_pct": _pct(done, "truck_km"),
+        "drone_share_pct": float(np.mean([100.0 * r["drone_deliveries"] / r["customers"]
+                                          for r in done])),
+        "truck_wait_min_mean": float(np.mean([r["truck_wait_min"] for r in done])),
+        "battery_swaps_mean": float(np.mean([r["battery_swaps"] for r in done])),
+        "min_battery_pct_mean": float(np.mean([r["min_battery_pct"] for r in done])),
     })
-    return summary
+    return s
 
 
-def paired_tests(runs_by_policy, subject, opponents):
+def across_seeds(per_seed, label):
     """
-    Is the difference real, or could 20 instances have produced it by chance?
-
-    Every policy is run on the same instances, so the comparison is paired and
-    instance difficulty cancels: for each instance we take the difference in
-    delivery time and ask whether those differences are centred on zero. Both a
-    paired t-test and a Wilcoxon signed-rank test are reported -- the t-test
-    assumes roughly normal differences, Wilcoxon does not, and agreement
-    between them means the answer does not rest on that assumption.
-
-    The win count is included because it is the honest headline: a policy that
-    is better on average but loses half its instances is a different claim from
-    one that wins nearly all of them.
+    Mean and 95% confidence interval across training seeds for every headline
+    metric. With few seeds a t-interval is the honest choice: it widens to
+    reflect how little five samples can tell you.
     """
     from scipy import stats
 
-    def completed(policy):
-        return {r["instance"]: r["hybrid_time_min"]
-                for r in runs_by_policy[policy] if r["route_complete"]}
-
-    mine = completed(subject)
-    out = []
-    for opponent in opponents:
-        theirs = completed(opponent)
-        shared = sorted(set(mine) & set(theirs))
-        if len(shared) < MIN_COMPLETED_FOR_STATS:
+    out = {"policy": label, "n_seeds": len(per_seed),
+           "completion_rate_pct": float(np.mean([s["completion_rate_pct"] for s in per_seed])),
+           "failed_sorties_mean": float(np.mean([s["failed_sorties_mean"] for s in per_seed])),
+           "battery_deaths_total": int(sum(s["battery_deaths_total"] for s in per_seed))}
+    for key in [m + "_change_pct" for m in METRICS] + [
+            "drone_share_pct", "truck_wait_min_mean", "time_min_mean",
+            "truck_km_mean", "cost_inr_mean", "co2_kg_mean",
+            "battery_swaps_mean", "min_battery_pct_mean", "base_time_min_mean"]:
+        vals = [s.get(key) for s in per_seed if s.get(key) is not None]
+        if not vals:
+            out[key] = None
             continue
-        a = np.array([mine[i] for i in shared])
-        b = np.array([theirs[i] for i in shared])
-        out.append({
-            "subject": subject,
-            "opponent": opponent,
-            "n_instances": len(shared),
-            "mean_diff_min": float((a - b).mean()),
-            "wins": int((a < b).sum()),
-            "paired_t_p": float(stats.ttest_rel(a, b).pvalue),
-            "wilcoxon_p": float(stats.wilcoxon(a, b).pvalue),
-        })
+        mean = float(np.mean(vals))
+        out[key] = mean
+        if len(vals) > 1:
+            half = float(stats.t.ppf(0.975, len(vals) - 1)
+                         * np.std(vals, ddof=1) / np.sqrt(len(vals)))
+            out[key + "_ci95"] = half
+            out[key + "_seeds"] = [float(v) for v in vals]
     return out
 
 
-def format_significance(tests):
-    if not tests:
-        return ""
-    head = "{:<16} {:>10} {:>8} {:>12} {:>12}".format(
-        "vs", "mean diff", "wins", "paired t", "wilcoxon")
-    lines = ["", "Paired tests for {} (same instances, negative favours it)"
-             .format(tests[0]["subject"]), head, "-" * len(head)]
-    for t in tests:
-        lines.append("{:<16} {:>+7.1f} min {:>5d}/{:<2d} {:>12.1e} {:>12.1e}".format(
-            t["opponent"], t["mean_diff_min"], t["wins"], t["n_instances"],
-            t["paired_t_p"], t["wilcoxon_p"]))
-    return "\n".join(lines)
+def seed_average_runs(runs_by_seed):
+    """One run per (instance, world): the mean over seeds of each metric."""
+    keyed = {}
+    for runs in runs_by_seed:
+        for r in runs:
+            keyed.setdefault((r["instance"], r["world_seed"]), []).append(r)
+    out = []
+    for (inst, ws), rs in sorted(keyed.items()):
+        avg = dict(rs[0])
+        for k in ("time_min", "energy_kwh", "cost_inr", "co2_kg", "truck_km"):
+            avg[k] = float(np.mean([r[k] for r in rs]))
+        avg["route_complete"] = all(r["route_complete"] for r in rs)
+        out.append(avg)
+    return out
+
+
+def paired_tests(runs_by_policy, subject, opponents, metric="time_min"):
+    """
+    Paired t-test and Wilcoxon signed-rank on per-(instance, world)
+    differences, with the win count -- a policy better on average but losing
+    half its episodes is a much weaker claim than one that wins nearly all.
+    """
+    from scipy import stats
+
+    def done(p):
+        return {(r["instance"], r["world_seed"]): r[metric]
+                for r in runs_by_policy[p] if r["route_complete"]}
+
+    mine = done(subject)
+    out = []
+    for opp in opponents:
+        theirs = done(opp)
+        keys = sorted(set(mine) & set(theirs))
+        if len(keys) < MIN_COMPLETED_FOR_STATS:
+            continue
+        a = np.array([mine[k] for k in keys])
+        b = np.array([theirs[k] for k in keys])
+        out.append({"subject": subject, "opponent": opp, "metric": metric,
+                    "n": len(keys), "mean_diff": float((a - b).mean()),
+                    "wins": int((a < b).sum()),
+                    "paired_t_p": float(stats.ttest_rel(a, b).pvalue),
+                    "wilcoxon_p": float(stats.wilcoxon(a, b).pvalue)})
+    return out
 
 
 def format_table(summaries):
-    """Render the comparison as a fixed-width table for the terminal."""
-    head = ("{:<14} {:>7} {:>9} {:>9} {:>9} {:>8} {:>8}".format(
-        "policy", "compl.", "time min", "vs base", "energy", "drone%", "fails"))
+    head = "{:<16} {:>6} {:>8} {:>8} {:>8} {:>8} {:>7} {:>6}".format(
+        "policy", "compl", "time", "energy", "cost", "CO2", "drone%", "fails")
     lines = [head, "-" * len(head)]
     for s in summaries:
-        if s["time_change_pct"] is None:
-            lines.append("{:<14} {:>6.0f}% {:>9} {:>9} {:>9} {:>8} {:>8.1f}".format(
-                s["policy"], s["completion_rate_pct"], "--", "--", "--", "--",
-                s["failed_sorties_mean"]))
+        if s.get("time_change_pct") is None:
+            lines.append("{:<16} {:>5.0f}%  -- insufficient completions --".format(
+                s["policy"], s["completion_rate_pct"]))
             continue
-        lines.append(
-            "{:<14} {:>6.0f}% {:>9.1f} {:>+8.1f}% {:>+8.1f}% {:>7.0f}% "
-            "{:>8.1f}".format(
-                s["policy"], s["completion_rate_pct"],
-                s["hybrid_time_min_mean"], s["time_change_pct"],
-                s["energy_change_pct"], s["drone_share_pct"],
-                s["failed_sorties_mean"]))
+        ci = s.get("time_change_pct_ci95")
+        lines.append("{:<16} {:>5.0f}% {:>+7.1f}% {:>+7.1f}% {:>+7.1f}% {:>+7.1f}% "
+                     "{:>6.0f}% {:>6.1f}{}".format(
+                         s["policy"], s["completion_rate_pct"], s["time_change_pct"],
+                         s["energy_change_pct"], s["cost_change_pct"],
+                         s["co2_change_pct"], s["drone_share_pct"],
+                         s["failed_sorties_mean"],
+                         "   (time +/-{:.1f}, {} seeds)".format(ci, s["n_seeds"])
+                         if ci is not None else ""))
     return "\n".join(lines)
 
 
@@ -258,72 +255,80 @@ def format_table(summaries):
 # Entry point
 # ======================================================================
 
-def collect_policies(algos, model_dir=MODEL_DIR, which="best"):
-    """
-    Gather the heuristic policies plus whichever trained models exist on disk.
-
-    Missing models are skipped with a warning rather than raising, so the
-    evaluation is still useful before every algorithm has finished training.
-    """
-    from .train import load_policy
-
-    entries = []
-    for name, cls in POLICIES.items():
-        entries.append({"label": name, "policy": cls(), "is_sb3": False,
-                        "masked": False})
-
-    for algo in algos:
-        fname = "best/best_model.zip" if which == "best" else "final.zip"
-        path = os.path.join(model_dir, algo, fname)
-        if not os.path.exists(path):
-            path = os.path.join(model_dir, algo, "final.zip")
-        if not os.path.exists(path):
-            print("[skip] no trained model for {} at {}".format(algo, path))
-            continue
-        entries.append({"label": algo, "policy": load_policy(algo, path),
-                        "is_sb3": True, "masked": algo == "maskable_ppo"})
-    return entries
+def learned_checkpoints(algo, seeds=None, which="best"):
+    from .train import checkpoint
+    seeds = config.SEEDS[algo] if seeds is None else seeds
+    return [(s, checkpoint(algo, s, which)) for s in seeds
+            if checkpoint(algo, s, which)]
 
 
 def main():
+    from .train import load_policy
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--algos", nargs="*", default=["maskable_ppo", "ppo", "dqn"])
     ap.add_argument("--which", default="best", choices=["best", "final"])
+    ap.add_argument("--preference", default=config.HEADLINE_PREFERENCE)
     ap.add_argument("--out", default=os.path.join(RESULT_DIR, "evaluation.json"))
     args = ap.parse_args()
 
-    scenario = load_scenario()
+    scenario = load_scenario(config.CITY)
     _, eval_ids = split_instances(scenario)
-    print("Evaluating on {} held-out instances "
-          "({} customers each)\n".format(len(eval_ids),
-                                         len(scenario["instances"][0]["customers"])))
+    print("Evaluating on {} held-out instances x {} worlds, preference '{}'\n".format(
+        len(eval_ids), len(config.EVAL_WORLD_SEEDS), args.preference))
 
-    summaries, detail = [], {}
-    for entry in collect_policies(args.algos, which=args.which):
-        runs = evaluate_policy(entry["policy"], scenario, eval_ids,
-                               is_sb3=entry["is_sb3"], masked=entry["masked"])
-        summaries.append(summarise(runs, entry["label"]))
-        detail[entry["label"]] = runs
-        print("  scored {}".format(entry["label"]))
+    summaries, runs, per_seed_runs = [], {}, {}
+    for name, cls in POLICIES.items():
+        r = evaluate_policy(cls(), scenario, eval_ids, preference=args.preference)
+        runs[name] = r
+        summaries.append(summarise(r, name))
+        print("  scored {}".format(name), flush=True)
+
+    for algo in args.algos:
+        ckpts = learned_checkpoints(algo, which=args.which)
+        if not ckpts:
+            print("  [skip] no trained {}".format(algo))
+            continue
+        seed_summaries, seed_runs = [], []
+        for seed, path in ckpts:
+            r = evaluate_policy(load_policy(algo, path), scenario, eval_ids,
+                                is_sb3=True, masked=(algo == "maskable_ppo"),
+                                preference=args.preference)
+            seed_runs.append(r)
+            seed_summaries.append(summarise(r, "{}#{}".format(algo, seed)))
+            print("  scored {} seed {}".format(algo, seed), flush=True)
+        per_seed_runs[algo] = {str(s): r for (s, _), r in zip(ckpts, seed_runs)}
+        runs[algo] = seed_average_runs(seed_runs)
+        agg = across_seeds(seed_summaries, algo)
+        agg["per_seed"] = seed_summaries
+        summaries.append(agg)
+
+    ranked = [s["policy"] for s in sorted(
+        (s for s in summaries if s.get("time_change_pct") is not None),
+        key=lambda s: s["time_change_pct"])]
+    tests = {}
+    if len(ranked) > 1:
+        for metric in ("time_min", "cost_inr", "energy_kwh"):
+            tests[metric] = paired_tests(runs, ranked[0], ranked[1:], metric)
 
     print("\n" + format_table(summaries) + "\n")
-
-    # Whether the best policy's lead is real, tested against every other
-    # policy on the same instances.
-    ranked = [s["policy"] for s in sorted(
-        (s for s in summaries if s["time_change_pct"] is not None),
-        key=lambda s: s["time_change_pct"])]
-    tests = paired_tests(detail, ranked[0], ranked[1:]) if len(ranked) > 1 else []
-    if tests:
-        print(format_significance(tests) + "\n")
+    if tests.get("time_min"):
+        print("Paired tests on delivery time for {} (n per test = {}):".format(
+            ranked[0], tests["time_min"][0]["n"]))
+        for t in tests["time_min"]:
+            print("  vs {:<16} {:+6.1f} min  wins {:>3}/{:<3}  t p={:.1e}  W p={:.1e}".format(
+                t["opponent"], t["mean_diff"], t["wins"], t["n"],
+                t["paired_t_p"], t["wilcoxon_p"]))
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as f:
-        json.dump({"n_eval_instances": len(eval_ids),
+        json.dump({"city": config.CITY, "n_eval_instances": len(eval_ids),
+                   "world_seeds": list(config.EVAL_WORLD_SEEDS),
                    "n_customers": len(scenario["instances"][0]["customers"]),
-                   "summaries": summaries, "significance": tests,
-                   "runs": detail}, f, indent=2)
-    print("Results -> {}".format(args.out))
+                   "preference": args.preference, "summaries": summaries,
+                   "significance": tests, "runs": runs,
+                   "per_seed_runs": per_seed_runs}, f)
+    print("\nResults -> {}".format(args.out))
 
 
 if __name__ == "__main__":

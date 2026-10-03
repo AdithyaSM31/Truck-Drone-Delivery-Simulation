@@ -1,0 +1,321 @@
+{
+ "steps": 1000000,
+ "seed": 0,
+ "n_eval_instances": 20,
+ "world_seeds": [
+  101,
+  102,
+  103,
+  104,
+  105
+ ],
+ "preference": "fastest",
+ "rows": [
+  {
+   "tag": "abl_reference",
+   "description": "Full configuration, same 1M-step budget",
+   "kind": "reference",
+   "change": {},
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -27.466466547286217,
+    "energy_change_pct": -23.648121760405292,
+    "cost_change_pct": -19.484343810973286,
+    "drone_share_pct": 55.80000000000002,
+    "truck_wait_min_mean": 3.3288937460535437,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 6.01,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.563068910981624,
+    "energy_change_pct": -17.409612993002703,
+    "cost_change_pct": -14.263395968025032,
+    "drone_share_pct": 53.73333333333333,
+    "truck_wait_min_mean": 3.0099557595891433,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.67,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 0.0,
+    "cost_change_pct": 0.0,
+    "energy_change_pct": 0.0
+   },
+   "greedy_vs_reference_pp": 0.0
+  },
+  {
+   "tag": "abl_rendezvous1",
+   "description": "Drone must meet the truck at the next stop (no rendezvous choice)",
+   "kind": "capability",
+   "change": {
+    "rendezvous_options": 1
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -24.85094801817826,
+    "energy_change_pct": -21.68360180135897,
+    "cost_change_pct": -17.45508780938837,
+    "drone_share_pct": 52.86666666666667,
+    "truck_wait_min_mean": 4.023156960419291,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.71,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -21.457088231621405,
+    "energy_change_pct": -17.401208653048208,
+    "cost_change_pct": -13.37310032038681,
+    "drone_share_pct": 56.33333333333333,
+    "truck_wait_min_mean": 6.299268992419535,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.89,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 2.6155185291079555,
+    "cost_change_pct": 2.0292560015849155,
+    "energy_change_pct": 1.9645199590463207
+   },
+   "greedy_vs_reference_pp": 1.1059806793602185
+  },
+  {
+   "tag": "abl_no_replan",
+   "description": "Truck tour never re-optimised after drone deliveries",
+   "kind": "capability",
+   "change": {
+    "replan_tour": false
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -27.86613741933278,
+    "energy_change_pct": -23.989844832172306,
+    "cost_change_pct": -20.13572489098467,
+    "drone_share_pct": 53.13333333333332,
+    "truck_wait_min_mean": 3.7615091495955726,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.78,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.628289873042974,
+    "energy_change_pct": -17.640788868050574,
+    "cost_change_pct": -14.452745951559809,
+    "drone_share_pct": 53.33333333333333,
+    "truck_wait_min_mean": 3.0506359321562515,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.62,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": -0.3996708720465634,
+    "cost_change_pct": -0.6513810800113831,
+    "energy_change_pct": -0.34172307176701366
+   },
+   "greedy_vs_reference_pp": -0.06522096206134975
+  },
+  {
+   "tag": "abl_drones1",
+   "description": "One drone instead of two",
+   "kind": "capability",
+   "change": {
+    "n_drones": 1
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -18.30990012179131,
+    "energy_change_pct": -16.107306367810132,
+    "cost_change_pct": -13.481961987338924,
+    "drone_share_pct": 34.06666666666668,
+    "truck_wait_min_mean": 1.8342432088571012,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 3.9,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -13.861449644581342,
+    "energy_change_pct": -11.901002646913796,
+    "cost_change_pct": -9.532971814527023,
+    "drone_share_pct": 30.93333333333333,
+    "truck_wait_min_mean": 1.5664656599714266,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 3.44,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 9.156566425494908,
+    "cost_change_pct": 6.002381823634362,
+    "energy_change_pct": 7.54081539259516
+   },
+   "greedy_vs_reference_pp": 8.701619266400282
+  },
+  {
+   "tag": "abl_drones3",
+   "description": "Three drones instead of two",
+   "kind": "capability",
+   "change": {
+    "n_drones": 3
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -30.177018933184723,
+    "energy_change_pct": -26.936672441124458,
+    "cost_change_pct": -21.448016653255305,
+    "drone_share_pct": 64.86666666666666,
+    "truck_wait_min_mean": 5.718017070744372,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 6.41,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -27.443795322743473,
+    "energy_change_pct": -22.155929225126123,
+    "cost_change_pct": -17.559398492630137,
+    "drone_share_pct": 67.13333333333334,
+    "truck_wait_min_mean": 4.313858827874808,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 6.5,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": -2.710552385898506,
+    "cost_change_pct": -1.963672842282019,
+    "energy_change_pct": -3.2885506807191653
+   },
+   "greedy_vs_reference_pp": -4.880726411761849
+  },
+  {
+   "tag": "abl_batteries1",
+   "description": "No spare battery: one pack per drone",
+   "kind": "capability",
+   "change": {
+    "batteries_per_drone": 1
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -18.07859895162095,
+    "energy_change_pct": -15.730897918251458,
+    "cost_change_pct": -13.021676935578848,
+    "drone_share_pct": 35.86666666666667,
+    "truck_wait_min_mean": 1.5395893810559196,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -14.079903442307952,
+    "energy_change_pct": -10.499925713477465,
+    "cost_change_pct": -8.428645715293346,
+    "drone_share_pct": 36.33333333333334,
+    "truck_wait_min_mean": 1.6348502814331318,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 0.0,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 9.387867595665266,
+    "cost_change_pct": 6.462666875394438,
+    "energy_change_pct": 7.917223842153835
+   },
+   "greedy_vs_reference_pp": 8.483165468673672
+  },
+  {
+   "tag": "abl_specialist",
+   "description": "Trained for time only (no preference conditioning)",
+   "kind": "training",
+   "change": {
+    "preference_conditioned": false
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.915344674598067,
+    "energy_change_pct": -21.995499127434435,
+    "cost_change_pct": -18.19495085070199,
+    "drone_share_pct": 58.0,
+    "truck_wait_min_mean": 3.5433226518637975,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 6.33,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.563068910981624,
+    "energy_change_pct": -17.409612993002703,
+    "cost_change_pct": -14.263395968025032,
+    "drone_share_pct": 53.73333333333333,
+    "truck_wait_min_mean": 3.0099557595891433,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.67,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 0.5511218726881495,
+    "cost_change_pct": 1.2893929602712966,
+    "energy_change_pct": 1.652622632970857
+   },
+   "greedy_vs_reference_pp": 0.0,
+   "paired_test_time": {
+    "subject": "abl_reference",
+    "opponent": "abl_specialist",
+    "metric": "time_min",
+    "n": 100,
+    "mean_diff": -0.9881283279019216,
+    "wins": 46,
+    "paired_t_p": 0.27410854385296457,
+    "wilcoxon_p": 0.3431013226065629
+   }
+  },
+  {
+   "tag": "abl_calm_training",
+   "description": "Trained without traffic or wind, tested with them",
+   "kind": "training",
+   "change": {
+    "stochastic": false
+   },
+   "agent": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -26.273809124799058,
+    "energy_change_pct": -22.857675905935352,
+    "cost_change_pct": -18.641549772298802,
+    "drone_share_pct": 54.33333333333334,
+    "truck_wait_min_mean": 4.946900199869197,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.69,
+    "battery_deaths_total": 0
+   },
+   "greedy_same_world": {
+    "completion_rate_pct": 100.0,
+    "time_change_pct": -22.563068910981624,
+    "energy_change_pct": -17.409612993002703,
+    "cost_change_pct": -14.263395968025032,
+    "drone_share_pct": 53.73333333333333,
+    "truck_wait_min_mean": 3.0099557595891433,
+    "failed_sorties_mean": 0.0,
+    "battery_swaps_mean": 5.67,
+    "battery_deaths_total": 0
+   },
+   "vs_reference_pp": {
+    "time_change_pct": 1.1926574224871587,
+    "cost_change_pct": 0.8427940386744837,
+    "energy_change_pct": 0.7904458544699402
+   },
+   "greedy_vs_reference_pp": 0.0,
+   "paired_test_time": {
+    "subject": "abl_reference",
+    "opponent": "abl_calm_training",
+    "metric": "time_min",
+    "n": 100,
+    "mean_diff": -2.2670464004555773,
+    "wins": 57,
+    "paired_t_p": 0.07053500686643556,
+    "wilcoxon_p": 0.025464741364403118
+   }
+  }
+ ]
+}

@@ -21,6 +21,19 @@ __pycache__/
 # Everything needed to run and to reproduce the results table is kept.
 models/*/tb/
 models/*/episode_metrics.json
+models/*/seed*/tb/
+models/*/seed*/episode_metrics.json
+models/probe_*/
+# Final weights: the selected best/ checkpoint is what everything loads.
+models/*/seed*/final.zip
+
+# OpenStreetMap downloads. The street graphs (23 MB) are only needed to
+# rebuild a scenario (python -m truckdrone.scenario --build <city>), which
+# fetches them again; everything the simulator and dashboard read at run
+# time -- distance matrices, street polylines -- is in data/*.npz.
+data/*.graphml
+cache/
+logs/
 
 # Vercel project link and local env (site/.vercel is machine-specific)
 site/.vercel/
@@ -28,3 +41,6 @@ site/.env.local
 
 .vercel
 .env*
+
+# Presentation decks live outside the code history
+*.pptx

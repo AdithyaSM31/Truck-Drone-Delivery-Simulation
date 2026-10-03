@@ -1,21 +1,20 @@
 """
 Turn a policy rollout into an animation trace.
 
-The environment reasons in discrete decisions -- "advance", "launch to
-customer 3" -- and records what each decision cost. A viewer needs something
-else: continuous positions over a clock. This module bridges the two.
+The environment reasons in decisions; a viewer needs positions on a clock.
+Two kinds of record come out of an episode:
 
-Each ``advance`` decision becomes a *leg*: the truck drives from one stop to
-the next along the actual node-by-node shortest path through the road graph,
-while any drone launched at the previous stop flies out to its customer,
-hovers to drop the parcel, then flies ahead to the recovery point. The leg
-lasts as long as the slower of the two, which is precisely the concurrency the
-whole idea depends on.
+  * truck legs -- one per "drive on" decision, each carrying the real street
+    polyline between its two stops, its departure, arrival and finish times,
+    the doorstep service and any wait for a drone;
+  * sorties -- one per launch, with absolute launch, landing and recovery
+    times. A sortie can span several truck legs (the agent chose to meet the
+    truck further down the route), so sorties are a separate timeline rather
+    than something hung off a single leg.
 
-The trace carries geometry (where things are), timing (when), and running
-metrics (battery, energy, packages delivered), so the dashboard can scrub to
-any moment and show the true state. The same instance is also rolled out under
-the truck-only baseline so the two can be animated side by side on one clock.
+Coordinates are UTM metres mapped into a 1000 x 1000 view box. The mapping is
+fixed per city (from the extent of its road network), so every trace for a
+city shares one frame and the background map is sent only once.
 """
 
 import argparse
@@ -26,225 +25,205 @@ import numpy as np
 
 from . import config
 from .baselines import POLICIES, TruckOnlyPolicy
-from .env import TruckDroneEnv
-from .scenario import build_graph, load_scenario, road_path, split_instances
+from .env import PREFERENCE_PRESETS, TruckDroneEnv
+from .evaluate import act
+from .scenario import CITIES, StreetPaths, load_scenario, split_instances
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULT_DIR = os.path.join(ROOT, "results")
-
-VIEW_SIZE = 1000.0
+VIEW = 1000.0
+_FRAMES = {}
 
 
 # ======================================================================
-# Geometry
+# View frame
 # ======================================================================
 
-def view_coords(coords, margin=0.06):
-    """
-    Map UTM metres onto a square view box, preserving aspect ratio.
+class Frame:
+    """UTM metres -> view pixels, preserving aspect ratio, y flipped."""
 
-    The frontend then treats these as plain pixels, so no projection logic has
-    to live in JavaScript. Y is flipped because screen coordinates grow
-    downwards while northings grow upwards.
-    """
-    lo, hi = coords.min(axis=0), coords.max(axis=0)
-    span = float(np.max(hi - lo))
-    scale = VIEW_SIZE * (1.0 - 2.0 * margin) / span
-    centred = (coords - (lo + hi) / 2.0) * scale
-    out = centred + VIEW_SIZE / 2.0
-    out[:, 1] = VIEW_SIZE - out[:, 1]
+    def __init__(self, city, margin=0.03):
+        self.paths = StreetPaths(city)
+        bg = self.paths.background_xy()
+        pts = np.concatenate(bg) if bg else load_scenario(city)["coords"]
+        lo, hi = pts.min(axis=0), pts.max(axis=0)
+        self.centre = (lo + hi) / 2.0
+        self.scale = VIEW * (1 - 2 * margin) / float(np.max(hi - lo))
+        self.metres_per_px = 1.0 / self.scale
+        self._background = bg
+
+    def xy(self, pts):
+        p = (np.asarray(pts, dtype=np.float64) - self.centre) * self.scale + VIEW / 2
+        p[..., 1] = VIEW - p[..., 1]
+        return p
+
+    def simplify(self, pts, min_px=1.5):
+        """Drop points closer than ``min_px`` to the last kept one."""
+        p = self.xy(pts)
+        keep = [p[0]]
+        for q in p[1:-1]:
+            if np.linalg.norm(q - keep[-1]) >= min_px:
+                keep.append(q)
+        keep.append(p[-1])
+        return [[round(float(x), 1), round(float(y), 1)] for x, y in keep]
+
+    def background(self):
+        return [self.simplify(line, 2.5) for line in self._background]
+
+
+def frame(city):
+    if city not in _FRAMES:
+        _FRAMES[city] = Frame(city)
+    return _FRAMES[city]
+
+
+def map_payload(city):
+    """Everything static about a city's map: roads, sites, scale."""
+    sc = load_scenario(city)
+    fr = frame(city)
+    sites = fr.xy(sc["coords"])
+    return {"city": city, "name": CITIES[city]["name"],
+            "metres_per_px": fr.metres_per_px,
+            "roads": fr.background(),
+            "sites": [[round(float(x), 1), round(float(y), 1)] for x, y in sites],
+            "n_instances": len(split_instances(sc)[1])}
+
+
+# ======================================================================
+# Rollout
+# ======================================================================
+
+def _run(env, policy, options, is_sb3, masked):
+    obs, _ = env.reset(options=options)
+    done = False
+    while not done:
+        obs, _, te, tr, info = env.step(act(policy, obs, env, is_sb3, masked))
+        done = te or tr
+    return env.trace, dict(info)
+
+
+def _pack(trace, info, fr, city):
+    paths = fr.paths
+    legs = [{
+        "from": int(l["from_node"]), "to": int(l["to_node"]),
+        "t_start": round(l["t_start"], 1), "t_arrive": round(l["t_arrive"], 1),
+        "t_end": round(l["t_end"], 1),
+        "path": (fr.simplify(paths.xy(l["from_node"], l["to_node"]))
+                 if l["from_node"] != l["to_node"] else []),
+        "km": round(l["distance_m"] / 1000.0, 3),
+        "service_s": round(l["service_s"], 1), "idle_s": round(l["idle_s"], 1),
+        "truck_delivery": l["truck_served_node"],
+        "packs": l["packs_after"], "congestion": round(l["congestion"], 3),
+    } for l in trace["legs"]]
+    sorties = [{
+        "drone": s["drone_idx"], "launch": s["launch_node"],
+        "customer": s["customer_node"], "recovery": s["recovery_node"],
+        "option": s["rendezvous_option"],
+        "t_launch": round(s["t_launch"], 1), "t_land": round(s["t_land"], 1),
+        "t_recover": round(s["t_recover"], 1),
+        "km": round(s["distance_m"] / 1000.0, 3), "wh": round(s["energy_wh"], 2),
+        "battery_before": round(s["battery_before"], 1),
+        "battery_after": round(s["battery_after"], 1),
+        "swapped": bool(s["swapped"]),
+        "detour_saved_km": round(s["detour_saved_m"] / 1000.0, 3),
+    } for s in trace["sorties"]]
+    stats = {
+        "time_min": round(info["total_time_s"] / 60.0, 1),
+        "truck_km": round(info["truck_distance_m"] / 1000.0, 2),
+        "drone_km": round(info["drone_distance_m"] / 1000.0, 2),
+        "energy_kwh": round(info["total_energy_wh"] / 1000.0, 2),
+        "cost_inr": round(info["cost_inr"], 0), "co2_kg": round(info["co2_kg"], 2),
+        "served": info["served"], "customers": info["total_customers"],
+        "route_complete": bool(info["route_complete"]),
+        "drone_deliveries": info["drone_deliveries"],
+        "truck_deliveries": info["truck_deliveries"],
+        "battery_swaps": info["battery_swaps"],
+        "truck_wait_min": round(info["truck_wait_time_s"] / 60.0, 1),
+        "min_battery_pct": round(info["min_battery_pct"], 1),
+    }
+    return {"legs": legs, "sorties": sorties, "stats": stats}
+
+
+def build_trace(scenario, instance, world_seed, policy, label, preference,
+                is_sb3=False, masked=False, env_kwargs=None, include_baseline=True):
+    """Hybrid rollout, plus (optionally) the truck-only run in the same world."""
+    city = scenario["city"]
+    fr = frame(city)
+    _, eval_ids = split_instances(scenario)
+    env = TruckDroneEnv(scenario, instance_ids=eval_ids, record_trace=True,
+                        **(env_kwargs or config.env_kwargs()))
+    pref = PREFERENCE_PRESETS.get(preference, preference)
+    opts = {"instance": instance, "world_seed": world_seed, "preference": pref}
+    trace, info = _run(env, policy, opts, is_sb3, masked)
+    out = {
+        "policy": label, "city": city, "instance": instance,
+        "instance_global_id": int(eval_ids[instance]), "world_seed": world_seed,
+        "preference": preference if isinstance(preference, str) else list(pref),
+        "world": {"wind_ms": round(env.wind_speed, 2),
+                  "wind_to_deg": round(float(np.degrees(np.arctan2(env.wind[1], env.wind[0]))), 1),
+                  "start_hour": round(env.start_hour, 2)},
+        "depot": int(env.depot_index),
+        "customers": [int(c) for c in env.customer_indices],
+        "hybrid": _pack(trace, info, fr, city),
+    }
+    b = info["truck_only"]
+    out["baseline_stats"] = {"time_min": round(b["time_s"] / 60, 1),
+                             "truck_km": round(b["distance_m"] / 1000, 2),
+                             "energy_kwh": round(b["energy_wh"] / 1000, 2),
+                             "cost_inr": round(b["cost_inr"], 0),
+                             "co2_kg": round(b["co2_kg"], 2)}
+    h = out["hybrid"]["stats"]
+    out["comparison"] = {
+        k + "_change_pct": round((h[k2] - out["baseline_stats"][k2])
+                                 / out["baseline_stats"][k2] * 100, 1)
+        for k, k2 in (("time", "time_min"), ("truck_km", "truck_km"),
+                      ("energy", "energy_kwh"), ("cost", "cost_inr"), ("co2", "co2_kg"))}
+    if include_baseline:
+        out["baseline"] = baseline_trace(scenario, instance, world_seed, env_kwargs)
+    env.close()
     return out
 
 
-# ======================================================================
-# Trace construction
-# ======================================================================
-
-def _leg_geometry(graph, trace_legs):
-    """Attach the node-by-node road path to every leg."""
-    for leg in trace_legs:
-        leg["truck_path"] = road_path(graph, leg["truck_from"], leg["truck_to"])
-    return trace_legs
-
-
-def _run(scenario, instance_ids, instance, policy, is_sb3, masked, graph,
-         env_kwargs=None):
-    """Roll one policy over one instance and return (legs, final info)."""
-    env = TruckDroneEnv(scenario, instance_ids=instance_ids,
-                        record_trace=True,
-                        **(env_kwargs or config.env_kwargs()))
-    obs, _ = env.reset(options={"instance": instance})
-    done = False
-    while not done:
-        if is_sb3:
-            if masked:
-                action, _ = policy.predict(obs, action_masks=env.action_masks(),
-                                           deterministic=True)
-            else:
-                action, _ = policy.predict(obs, deterministic=True)
-            action = int(action)
-        else:
-            action = int(policy.predict(obs, env))
-        obs, _, terminated, truncated, info = env.step(action)
-        done = terminated or truncated
-
-    legs = _leg_geometry(graph, env.trace)
-    route = [int(n) for n in env.truck_route]
-    customers = [int(c) for c in env.customer_indices]
-    depot = int(env.depot_index)
-    env.close()
-    return legs, dict(info), route, customers, depot
-
-
-def build_trace(scenario, graph, instance_ids, instance, policy, label,
-                is_sb3=False, masked=False, env_kwargs=None):
-    """
-    Produce the full animation payload: the hybrid rollout, the truck-only
-    baseline on the same instance, and everything needed to draw the map.
-    """
-    legs, info, route, customers, depot = _run(
-        scenario, instance_ids, instance, policy, is_sb3, masked, graph,
-        env_kwargs)
-    base_legs, base_info, base_route, _, _ = _run(
-        scenario, instance_ids, instance, TruckOnlyPolicy(), False, False,
-        graph, env_kwargs)
-
-    coords = np.asarray(scenario["coords"], dtype=np.float64)
-    xy = view_coords(coords)
-
-    nodes = [{"id": i, "x": round(float(xy[i, 0]), 2),
-              "y": round(float(xy[i, 1]), 2)} for i in range(len(coords))]
-    edges = [[int(u), int(v)] for u, v in graph.edges()]
-
-    def pack(legs_):
-        out = []
-        for leg in legs_:
-            out.append({
-                "t_start": round(leg["t_start_s"], 2),
-                "t_end": round(leg["t_end_s"], 2),
-                "truck_time_s": round(leg["truck_time_s"], 2),
-                "truck_path": leg["truck_path"],
-                "truck_km": round(leg["truck_distance_m"] / 1000.0, 3),
-                "served_after": leg["served_count"],
-                "packs": leg["packs_after"],
-                "truck_delivery": leg["truck_served_node"],
-                "sorties": [{
-                    "drone": s["drone_idx"],
-                    "launch": s["launch_node"],
-                    "customer": s["customer_node"],
-                    "recovery": s["recovery_node"],
-                    "time_s": round(s["time_s"], 2),
-                    "km": round(s["distance_m"] / 1000.0, 3),
-                    "wh": round(s["energy_wh"], 2),
-                    "battery_before": round(s["battery_before"], 1),
-                    "battery_after": round(s["battery_after"], 1),
-                    "swapped": bool(s["swapped"]),
-                    "detour_saved_km": round(s["road_detour_saved_m"] / 1000.0, 3),
-                } for s in leg["sorties"]],
-            })
-        return out
-
-    def stats(inf):
-        return {
-            "time_min": round(inf["total_time_s"] / 60.0, 1),
-            "truck_km": round(inf["truck_distance_m"] / 1000.0, 2),
-            "drone_km": round(inf["drone_distance_m"] / 1000.0, 2),
-            "energy_wh": round(inf["total_energy_wh"], 1),
-            "truck_energy_wh": round(inf["truck_energy_wh"], 1),
-            "drone_energy_wh": round(inf["drone_energy_wh"], 2),
-            "served": inf["served"],
-            "customers": inf["total_customers"],
-            "route_complete": bool(inf["route_complete"]),
-            "drone_deliveries": inf["drone_deliveries"],
-            "truck_deliveries": inf["truck_deliveries"],
-            "failed_sorties": inf["failed_sorties"],
-            "min_battery_pct": round(inf["min_battery_pct"], 1),
-            "battery_swaps": inf["battery_swaps"],
-            "truck_wait_min": round(inf["truck_wait_time_s"] / 60.0, 1),
-        }
-
-    hybrid_stats = stats(info)
-    baseline_stats = stats(base_info)
-    baseline_stats["time_min"] = round(info["truck_only"]["time_s"] / 60.0, 1)
-    baseline_stats["truck_km"] = round(info["truck_only"]["distance_m"] / 1000.0, 2)
-    baseline_stats["energy_wh"] = round(info["truck_only"]["energy_wh"], 1)
-
-    return {
-        "policy": label,
-        "instance": int(instance_ids[instance % len(instance_ids)]),
-        "nodes": nodes,
-        "edges": edges,
-        "depot": depot,
-        "customers": customers,
-        "truck_route": route,
-        "baseline_route": base_route,
-        "hybrid": {"legs": pack(legs), "stats": hybrid_stats},
-        "baseline": {"legs": pack(base_legs), "stats": baseline_stats},
-        "comparison": {
-            "time_change_pct": round(
-                (hybrid_stats["time_min"] - baseline_stats["time_min"])
-                / baseline_stats["time_min"] * 100.0, 1),
-            "truck_km_change_pct": round(
-                (hybrid_stats["truck_km"] - baseline_stats["truck_km"])
-                / baseline_stats["truck_km"] * 100.0, 1),
-            "energy_change_pct": round(
-                (hybrid_stats["energy_wh"] - baseline_stats["energy_wh"])
-                / baseline_stats["energy_wh"] * 100.0, 1),
-        },
-    }
-
-
-def make_rollout(scenario, graph, label, instance=0, model_dir=None,
-                 which="best"):
-    """Build a trace for a heuristic policy name or a trained algorithm name."""
+def baseline_trace(scenario, instance, world_seed, env_kwargs=None):
+    city = scenario["city"]
     _, eval_ids = split_instances(scenario)
+    env = TruckDroneEnv(scenario, instance_ids=eval_ids, record_trace=True,
+                        **(env_kwargs or config.env_kwargs()))
+    trace, info = _run(env, TruckOnlyPolicy(),
+                       {"instance": instance, "world_seed": world_seed}, False, False)
+    env.close()
+    return _pack(trace, info, frame(city), city)
 
+
+def make_rollout(scenario, label, instance=0, world_seed=None, preference=None,
+                 model_path=None, include_baseline=True):
+    """A trace for a heuristic name or a trained algorithm name."""
+    world_seed = config.EVAL_WORLD_SEEDS[0] if world_seed is None else world_seed
+    preference = preference or config.HEADLINE_PREFERENCE
     if label in POLICIES:
-        return build_trace(scenario, graph, eval_ids, instance,
-                           POLICIES[label](), label)
-
+        return build_trace(scenario, instance, world_seed, POLICIES[label](), label,
+                           preference, include_baseline=include_baseline)
     from .train import load_policy
-
-    model_dir = model_dir or os.path.join(ROOT, "models")
-    fname = "best/best_model.zip" if which == "best" else "final.zip"
-    path = os.path.join(model_dir, label, fname)
-    if not os.path.exists(path):
-        path = os.path.join(model_dir, label, "final.zip")
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            "No trained model for {!r}. Train one first:\n"
-            "    python -m truckdrone.train --algo {}".format(label, label))
-    policy = load_policy(label, path)
-    return build_trace(scenario, graph, eval_ids, instance, policy, label,
-                       is_sb3=True, masked=(label == "maskable_ppo"))
+    if model_path is None:
+        raise FileNotFoundError("No model path for {!r}".format(label))
+    return build_trace(scenario, instance, world_seed, load_policy(label, model_path),
+                       label, preference, is_sb3=True,
+                       masked=(label == "maskable_ppo"),
+                       include_baseline=include_baseline)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--policy", default="greedy")
+    ap.add_argument("--city", default=config.CITY)
     ap.add_argument("--instance", type=int, default=0)
+    ap.add_argument("--world", type=int, default=config.EVAL_WORLD_SEEDS[0])
     ap.add_argument("--out", default=os.path.join(RESULT_DIR, "rollout.json"))
     args = ap.parse_args()
-
-    scenario = load_scenario()
-    graph = build_graph(scenario["coords"])
-    trace = make_rollout(scenario, graph, args.policy, instance=args.instance)
-
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    trace = make_rollout(load_scenario(args.city), args.policy, args.instance, args.world)
     with open(args.out, "w") as f:
         json.dump(trace, f)
-
-    h, b = trace["hybrid"]["stats"], trace["baseline"]["stats"]
-    print("{} on instance {}".format(args.policy, trace["instance"]))
-    print("  hybrid   {:.1f} min | {:.1f} truck km | {}/{} served | "
-          "{} by drone".format(h["time_min"], h["truck_km"], h["served"],
-                               h["customers"], h["drone_deliveries"]))
-    print("  baseline {:.1f} min | {:.1f} truck km".format(
-        b["time_min"], b["truck_km"]))
-    print("  -> {:+.1f}% time, {:+.1f}% truck km".format(
-        trace["comparison"]["time_change_pct"],
-        trace["comparison"]["truck_km_change_pct"]))
-    print("Trace -> {}".format(args.out))
+    print(json.dumps({k: trace[k] for k in ("policy", "city", "world", "comparison")}, indent=1))
 
 
 if __name__ == "__main__":
